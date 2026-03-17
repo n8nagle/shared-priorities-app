@@ -8,6 +8,13 @@ const BOARD_TYPE_OPTIONS = [
   { value: "custom", label: "Custom" },
 ];
 
+const APP_TABS = {
+  MAIN: "main",
+  TOP: "top",
+  DISCUSSION: "discussion",
+  BOARDS: "boards",
+};
+
 export default function App() {
   const [loading, setLoading] = useState(true);
 
@@ -62,9 +69,9 @@ export default function App() {
   const [inviteError, setInviteError] = useState("");
   const [inviteLoading, setInviteLoading] = useState(false);
 
-  const [itemSearch, setItemSearch] = useState("");
-  const [itemSort, setItemSort] = useState("score_desc");
-  const [itemViewMode, setItemViewMode] = useState("detailed");
+  const [topSearch, setTopSearch] = useState("");
+  const [discussionSearch, setDiscussionSearch] = useState("");
+  const [appTab, setAppTab] = useState(APP_TABS.MAIN);
 
   useEffect(() => {
     let mounted = true;
@@ -121,6 +128,12 @@ export default function App() {
 
     loadBoardItems(selectedBoardId);
   }, [selectedBoardId]);
+
+  useEffect(() => {
+    if (showBoardHub) {
+      setAppTab(APP_TABS.BOARDS);
+    }
+  }, [showBoardHub]);
 
   async function loadAppState() {
     setLoading(true);
@@ -283,12 +296,18 @@ export default function App() {
       currentUserRating && partnerRating
         ? Math.abs(currentUserRating.impact - partnerRating.impact) +
           Math.abs(currentUserRating.effort - partnerRating.effort)
-        : 0;
+        : null;
+
+    const alignmentLabel = getAlignmentLabel(
+      currentUserRating,
+      partnerRating,
+      disagreementScore
+    );
 
     const needsDiscussion =
       !currentUserRating ||
       !partnerRating ||
-      disagreementScore >= 3;
+      (disagreementScore !== null && disagreementScore >= 2);
 
     return {
       ...item,
@@ -300,6 +319,7 @@ export default function App() {
       impactDiff,
       effortDiff,
       disagreementScore,
+      alignmentLabel,
       needsDiscussion,
       quadrantLabel: getQuadrantLabel(avgImpact, avgEffort),
     };
@@ -310,7 +330,9 @@ export default function App() {
       return a.is_completed ? 1 : -1;
     }
 
-    if (a.score === null && b.score === null) return 0;
+    if (a.score === null && b.score === null) {
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    }
     if (a.score === null) return 1;
     if (b.score === null) return -1;
 
@@ -439,6 +461,7 @@ export default function App() {
       await loadAppState();
       setSelectedBoardId(boardInsert.id);
       setShowBoardHub(false);
+      setAppTab(APP_TABS.MAIN);
     } catch (error) {
       console.error(error);
       setSetupError(error.message || "Failed to create setup.");
@@ -479,6 +502,7 @@ export default function App() {
         boardType: "custom",
       });
       setShowBoardHub(false);
+      setAppTab(APP_TABS.MAIN);
     } catch (error) {
       console.error(error);
       setCreateBoardError(error.message || "Failed to create board.");
@@ -613,45 +637,40 @@ export default function App() {
     );
   }, [activeItems, showAllGridItems]);
 
-  const filteredActiveItems = useMemo(() => {
-    const search = itemSearch.trim().toLowerCase();
-    let next = activeItems;
-
-    if (search) {
-      next = next.filter((item) => item.title.toLowerCase().includes(search));
-    }
-
-    return [...next].sort((a, b) => compareItems(a, b, itemSort));
-  }, [activeItems, itemSearch, itemSort]);
-
-  const filteredCompletedItems = useMemo(() => {
-    const search = itemSearch.trim().toLowerCase();
-    let next = completedItems;
-
-    if (search) {
-      next = next.filter((item) => item.title.toLowerCase().includes(search));
-    }
-
-    return [...next].sort((a, b) => compareItems(a, b, itemSort));
-  }, [completedItems, itemSearch, itemSort]);
-
   const topPriorityItems = useMemo(() => {
-    return filteredActiveItems
-      .filter((item) => item.score !== null)
-      .slice(0, 5);
-  }, [filteredActiveItems]);
+    const search = topSearch.trim().toLowerCase();
+
+    let next = activeItems.filter((item) => item.score !== null);
+
+    if (search) {
+      next = next.filter((item) => item.title.toLowerCase().includes(search));
+    }
+
+    return [...next].sort((a, b) => {
+      if (a.score === null && b.score === null) return 0;
+      if (a.score === null) return 1;
+      if (b.score === null) return -1;
+      return b.score - a.score;
+    });
+  }, [activeItems, topSearch]);
 
   const needsDiscussionItems = useMemo(() => {
-    return filteredActiveItems
-      .filter((item) => item.needsDiscussion)
-      .sort((a, b) => {
-        const aMissing = !a.currentUserRating || !a.partnerRating ? 1 : 0;
-        const bMissing = !b.currentUserRating || !b.partnerRating ? 1 : 0;
+    const search = discussionSearch.trim().toLowerCase();
 
-        if (aMissing !== bMissing) return bMissing - aMissing;
-        return (b.disagreementScore ?? 0) - (a.disagreementScore ?? 0);
-      });
-  }, [filteredActiveItems]);
+    let next = activeItems.filter((item) => item.needsDiscussion);
+
+    if (search) {
+      next = next.filter((item) => item.title.toLowerCase().includes(search));
+    }
+
+    return [...next].sort((a, b) => {
+      const aMissing = !a.currentUserRating || !a.partnerRating ? 1 : 0;
+      const bMissing = !b.currentUserRating || !b.partnerRating ? 1 : 0;
+
+      if (aMissing !== bMissing) return bMissing - aMissing;
+      return (b.disagreementScore ?? -1) - (a.disagreementScore ?? -1);
+    });
+  }, [activeItems, discussionSearch]);
 
   const selectedDots = useMemo(() => {
     if (!selectedItem) return [];
@@ -711,7 +730,7 @@ export default function App() {
   if (!session || !user) {
     return (
       <>
-        <div className="app-shell">
+        <div className="app-shell auth-shell">
           <div className="card auth-card">
             <h1>Shared Priorities</h1>
             <p className="muted">Rank what matters most together.</p>
@@ -805,7 +824,7 @@ export default function App() {
   if (!household) {
     return (
       <>
-        <div className="app-shell">
+        <div className="app-shell auth-shell">
           <div className="card">
             <div className="top-row">
               <div>
@@ -918,451 +937,417 @@ export default function App() {
     );
   }
 
-  if (showBoardHub || !selectedBoard) {
-    return (
-      <>
-        <div className="app-shell">
-          <div className="card">
-            <div className="top-row">
-              <div>
-                <div className="eyebrow">{household.name}</div>
-                <h1>Boards</h1>
-                <p className="muted">
-                  Choose a board or create a new one.
-                </p>
-              </div>
-              <button type="button" onClick={handleSignOut}>
-                Sign Out
+  function openBoard(boardId) {
+    setSelectedBoardId(boardId);
+    setShowBoardHub(false);
+    setAppTab(APP_TABS.MAIN);
+  }
+
+  function jumpToItem(itemId) {
+    setSelectedItemId(itemId);
+    setAppTab(APP_TABS.MAIN);
+  }
+
+  const renderBoardsTab = () => (
+    <>
+      <div className="card">
+        <div className="top-row">
+          <div>
+            <div className="eyebrow">{household.name}</div>
+            <h1>Boards</h1>
+            <p className="muted">Choose a board or create a new one.</p>
+          </div>
+          <button type="button" onClick={handleSignOut}>
+            Sign Out
+          </button>
+        </div>
+      </div>
+
+      <div className="card">
+        <h2>Your Boards</h2>
+
+        {boards.length === 0 ? (
+          <p className="muted">No boards yet.</p>
+        ) : (
+          <div className="board-list">
+            {boards.map((board) => (
+              <button
+                key={board.id}
+                type="button"
+                className={`board-list-item ${selectedBoardId === board.id ? "selected" : ""}`}
+                onClick={() => openBoard(board.id)}
+              >
+                <div className="board-list-title">{board.title}</div>
+                <div className="muted">{humanizeBoardType(board.board_type)}</div>
               </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>Create Board</h2>
+        <form onSubmit={handleCreateBoard} className="stack">
+          <label>
+            Board Title
+            <input
+              value={createBoardForm.title}
+              onChange={(e) =>
+                setCreateBoardForm((prev) => ({
+                  ...prev,
+                  title: e.target.value,
+                }))
+              }
+              placeholder="Bathroom Remodel"
+            />
+          </label>
+
+          <div>
+            <div className="field-label">Board Type</div>
+            <div className="board-grid">
+              {BOARD_TYPE_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={
+                    createBoardForm.boardType === option.value
+                      ? "board-option active"
+                      : "board-option"
+                  }
+                  onClick={() =>
+                    setCreateBoardForm((prev) => ({
+                      ...prev,
+                      boardType: option.value,
+                    }))
+                  }
+                >
+                  {option.label}
+                </button>
+              ))}
             </div>
           </div>
 
-          <div className="card">
-            <h2>Your Boards</h2>
+          {createBoardError && <div className="error">{createBoardError}</div>}
 
-            {boards.length === 0 ? (
-              <p className="muted">No boards yet.</p>
-            ) : (
-              <div className="board-list">
-                {boards.map((board) => (
-                  <button
-                    key={board.id}
-                    type="button"
-                    className="board-list-item"
-                    onClick={() => {
-                      setSelectedBoardId(board.id);
-                      setShowBoardHub(false);
-                    }}
-                  >
-                    <div className="board-list-title">{board.title}</div>
-                    <div className="muted">{humanizeBoardType(board.board_type)}</div>
-                  </button>
-                ))}
-              </div>
-            )}
+          <button type="submit" className="primary" disabled={createBoardLoading}>
+            {createBoardLoading ? "Creating..." : "Create Board"}
+          </button>
+        </form>
+      </div>
+    </>
+  );
+
+  const renderMainTab = () => (
+    <>
+      <div className="card">
+        <div className="top-row">
+          <div>
+            <div className="eyebrow">{household.name}</div>
+            <h1>{selectedBoard?.title || "Board"}</h1>
+            <p className="muted">
+              Logged in as {profile?.display_name || user.email}
+            </p>
           </div>
 
-          <div className="card">
-            <h2>Create Board</h2>
-            <form onSubmit={handleCreateBoard} className="stack">
-              <label>
-                Board Title
-                <input
-                  value={createBoardForm.title}
-                  onChange={(e) =>
-                    setCreateBoardForm((prev) => ({
-                      ...prev,
-                      title: e.target.value,
-                    }))
-                  }
-                  placeholder="Bathroom Remodel"
-                />
-              </label>
+          <div className="header-actions">
+            <button
+              type="button"
+              onClick={() => {
+                setShowBoardHub(true);
+                setAppTab(APP_TABS.BOARDS);
+              }}
+            >
+              Boards
+            </button>
+            <button type="button" onClick={handleSignOut}>
+              Sign Out
+            </button>
+          </div>
+        </div>
+      </div>
 
+      <div className="card">
+        <div className="top-row">
+          <div>
+            <h2>Invite Partner</h2>
+            <p className="muted">
+              Share a one-time code so your partner can join this household.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={generateInviteCode}
+            disabled={inviteLoading}
+          >
+            {inviteLoading ? "Generating..." : "Generate Code"}
+          </button>
+        </div>
+
+        {inviteCode && (
+          <div className="invite-code-box">
+            <div className="invite-code-label">Invite Code</div>
+            <div className="invite-code">{inviteCode}</div>
+          </div>
+        )}
+
+        {inviteError && <div className="error top-gap">{inviteError}</div>}
+        {inviteMessage && <div className="success top-gap">{inviteMessage}</div>}
+      </div>
+
+      <div className="card">
+        <h2>Add Item</h2>
+        <form onSubmit={handleAddItem} className="inline-form">
+          <input
+            value={itemTitle}
+            onChange={(e) => setItemTitle(e.target.value)}
+            placeholder="Add a new item..."
+          />
+          <button type="submit" className="primary" disabled={addingItem}>
+            {addingItem ? "Adding..." : "Add"}
+          </button>
+        </form>
+
+        {itemError && <div className="error top-gap">{itemError}</div>}
+        {itemMessage && <div className="success top-gap">{itemMessage}</div>}
+      </div>
+
+      <div className="card selected-card">
+        <div className="top-row">
+          <h2>Focused Grid</h2>
+          <button
+            type="button"
+            onClick={() => setShowAllGridItems((prev) => !prev)}
+          >
+            {showAllGridItems ? "Show Selected Only" : "Show All Items"}
+          </button>
+        </div>
+
+        {!selectedItem ? (
+          <p className="muted">Add your first item to get started.</p>
+        ) : (
+          <div className="stack">
+            <div className="selected-header">
               <div>
-                <div className="field-label">Board Type</div>
-                <div className="board-grid">
-                  {BOARD_TYPE_OPTIONS.map((option) => (
+                <div className="selected-title">{selectedItem.title}</div>
+                <div className="muted">
+                  {selectedItem.score === null
+                    ? "Needs rating"
+                    : `Score ${selectedItem.score.toFixed(1)}`}
+                </div>
+              </div>
+
+              <button type="button" onClick={() => toggleComplete(selectedItem)}>
+                {selectedItem.is_completed ? "Mark Active" : "Mark Complete"}
+              </button>
+            </div>
+
+            <div className="focus-grid">
+              <div className="focus-box">
+                <div className="quadrant top-left">Quick Win</div>
+                <div className="quadrant top-right">Big Investment</div>
+                <div className="quadrant bottom-left">Low-Stakes</div>
+                <div className="quadrant bottom-right">Save for Later</div>
+
+                {gridItems.map((item) => (
+                  <MiniDot
+                    key={item.id}
+                    x={item.avgEffort}
+                    y={item.avgImpact}
+                    selected={item.id === selectedItem.id}
+                    label={item.title}
+                  />
+                ))}
+
+                {selectedDots.map((dot) => (
+                  <Dot
+                    key={dot.key}
+                    label={dot.label}
+                    x={dot.x}
+                    y={dot.y}
+                    variant={dot.variant}
+                    offsetIndex={dot.offsetIndex}
+                  />
+                ))}
+              </div>
+
+              <div className="focus-summary">
+                <div className="summary-pill">
+                  <span>Quadrant</span>
+                  <strong>{selectedItem.quadrantLabel}</strong>
+                </div>
+                <div className="summary-pill">
+                  <span>Alignment</span>
+                  <strong>{selectedItem.alignmentLabel}</strong>
+                </div>
+              </div>
+            </div>
+
+            <RatingRow
+              label="Impact"
+              value={selectedItem.currentUserRating?.impact ?? null}
+              onSelect={(value) => saveRating(selectedItem, "impact", value)}
+            />
+
+            <RatingRow
+              label="Effort"
+              value={selectedItem.currentUserRating?.effort ?? null}
+              onSelect={(value) => saveRating(selectedItem, "effort", value)}
+            />
+
+            <div className="stack">
+              <div className="list-section-header">
+                <h3>Active Items</h3>
+              </div>
+
+              {activeItems.length === 0 ? (
+                <p className="muted">No active items yet.</p>
+              ) : (
+                <div className="compact-item-list">
+                  {activeItems.map((item) => (
                     <button
-                      key={option.value}
+                      key={item.id}
                       type="button"
-                      className={
-                        createBoardForm.boardType === option.value
-                          ? "board-option active"
-                          : "board-option"
-                      }
-                      onClick={() =>
-                        setCreateBoardForm((prev) => ({
-                          ...prev,
-                          boardType: option.value,
-                        }))
-                      }
+                      className={`compact-item-row ${selectedItemId === item.id ? "selected" : ""}`}
+                      onClick={() => setSelectedItemId(item.id)}
                     >
-                      {option.label}
+                      <span className="compact-item-name">{item.title}</span>
                     </button>
                   ))}
                 </div>
-              </div>
-
-              {createBoardError && <div className="error">{createBoardError}</div>}
-
-              <button type="submit" className="primary" disabled={createBoardLoading}>
-                {createBoardLoading ? "Creating..." : "Create Board"}
-              </button>
-            </form>
-          </div>
-
-          <style>{styles}</style>
+              )}
+            </div>
+          )}
         </div>
-      </>
-    );
-  }
+      </div>
+
+      <div className="card">
+        <div className="top-row">
+          <h2>Completed</h2>
+          <button type="button" onClick={() => setShowCompleted((prev) => !prev)}>
+            {showCompleted ? "Hide" : "Show"}
+          </button>
+        </div>
+
+        {!showCompleted ? (
+          <p className="muted">
+            {completedItems.length} completed item{completedItems.length === 1 ? "" : "s"}
+          </p>
+        ) : completedItems.length === 0 ? (
+          <p className="muted">No completed items.</p>
+        ) : (
+          <div className="compact-item-list compact-item-list-completed">
+            {completedItems.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={`compact-item-row completed ${selectedItemId === item.id ? "selected" : ""}`}
+                onClick={() => setSelectedItemId(item.id)}
+              >
+                <span className="compact-item-name">{item.title}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
+  );
+
+  const renderTopTab = () => (
+    <>
+      <div className="card">
+        <div className="top-row">
+          <div>
+            <div className="eyebrow">{household.name}</div>
+            <h1>Top Priorities</h1>
+            <p className="muted">
+              Highest scoring items on {selectedBoard?.title || "this board"}.
+            </p>
+          </div>
+        </div>
+
+        <input
+          className="top-gap"
+          value={topSearch}
+          onChange={(e) => setTopSearch(e.target.value)}
+          placeholder="Search priorities..."
+        />
+      </div>
+
+      <div className="card">
+        {topPriorityItems.length === 0 ? (
+          <p className="muted">No scored items yet.</p>
+        ) : (
+          <div className="detail-list">
+            {topPriorityItems.map((item, index) => (
+              <DetailRow
+                key={item.id}
+                item={item}
+                rank={index + 1}
+                onSelect={() => jumpToItem(item.id)}
+                onToggleComplete={() => toggleComplete(item)}
+                actionLabel="Open"
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </>
+  );
+
+  const renderDiscussionTab = () => (
+    <>
+      <div className="card">
+        <div className="top-row">
+          <div>
+            <div className="eyebrow">{household.name}</div>
+            <h1>Needs Discussion</h1>
+            <p className="muted">
+              Missing ratings and items with disagreement.
+            </p>
+          </div>
+        </div>
+
+        <input
+          className="top-gap"
+          value={discussionSearch}
+          onChange={(e) => setDiscussionSearch(e.target.value)}
+          placeholder="Search discussion items..."
+        />
+      </div>
+
+      <div className="card">
+        {needsDiscussionItems.length === 0 ? (
+          <p className="muted">Nothing obvious needs discussion right now.</p>
+        ) : (
+          <div className="detail-list">
+            {needsDiscussionItems.map((item) => (
+              <DetailRow
+                key={item.id}
+                item={item}
+                onSelect={() => jumpToItem(item.id)}
+                onToggleComplete={() => toggleComplete(item)}
+                actionLabel="Review"
+                discussion
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </>
+  );
 
   return (
     <>
-      <div className="app-shell">
-        <div className="card">
-          <div className="top-row">
-            <div>
-              <div className="eyebrow">{household.name}</div>
-              <h1>{selectedBoard.title}</h1>
-              <p className="muted">
-                Logged in as {profile?.display_name || user.email}
-              </p>
-            </div>
-
-            <div className="header-actions">
-              <button type="button" onClick={() => setShowBoardHub(true)}>
-                Boards
-              </button>
-              <button type="button" onClick={handleSignOut}>
-                Sign Out
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="top-row">
-            <div>
-              <h2>Invite Partner</h2>
-              <p className="muted">
-                Share a one-time code so your partner can join this household.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={generateInviteCode}
-              disabled={inviteLoading}
-            >
-              {inviteLoading ? "Generating..." : "Generate Code"}
-            </button>
-          </div>
-
-          {inviteCode && (
-            <div className="invite-code-box">
-              <div className="invite-code-label">Invite Code</div>
-              <div className="invite-code">{inviteCode}</div>
-            </div>
-          )}
-
-          {inviteError && <div className="error top-gap">{inviteError}</div>}
-          {inviteMessage && <div className="success top-gap">{inviteMessage}</div>}
-        </div>
-
-        <div className="card">
-          <h2>Add Item</h2>
-          <form onSubmit={handleAddItem} className="inline-form">
-            <input
-              value={itemTitle}
-              onChange={(e) => setItemTitle(e.target.value)}
-              placeholder="Add a new item..."
-            />
-            <button type="submit" className="primary" disabled={addingItem}>
-              {addingItem ? "Adding..." : "Add"}
-            </button>
-          </form>
-
-          {itemError && <div className="error top-gap">{itemError}</div>}
-          {itemMessage && <div className="success top-gap">{itemMessage}</div>}
-        </div>
-
-        <div className="card selected-card">
-          <div className="top-row">
-            <h2>Focused Grid</h2>
-            <button
-              type="button"
-              onClick={() => setShowAllGridItems((prev) => !prev)}
-            >
-              {showAllGridItems ? "Show Selected Only" : "Show All Items"}
-            </button>
-          </div>
-
-          {!selectedItem ? (
-            <p className="muted">Add your first item to get started.</p>
-          ) : (
-            <div className="stack">
-              <div className="selected-header">
-                <div>
-                  <div className="selected-title">{selectedItem.title}</div>
-                  <div className="muted">
-                    {selectedItem.score === null
-                      ? "Needs rating"
-                      : `Score ${selectedItem.score.toFixed(1)} • ${selectedItem.quadrantLabel}`}
-                  </div>
-                </div>
-
-                <button type="button" onClick={() => toggleComplete(selectedItem)}>
-                  {selectedItem.is_completed ? "Mark Active" : "Mark Complete"}
-                </button>
-              </div>
-
-              <div className="focus-grid">
-                <div className="focus-box">
-                  <div className="quadrant top-left">Quick Win</div>
-                  <div className="quadrant top-right">Big Investment</div>
-                  <div className="quadrant bottom-left">Low-Stakes</div>
-                  <div className="quadrant bottom-right">Save for Later</div>
-
-                  {gridItems.map((item) => (
-                    <MiniDot
-                      key={item.id}
-                      x={item.avgEffort}
-                      y={item.avgImpact}
-                      selected={item.id === selectedItem.id}
-                      label={item.title}
-                    />
-                  ))}
-
-                  {selectedDots.map((dot) => (
-                    <Dot
-                      key={dot.key}
-                      label={dot.label}
-                      x={dot.x}
-                      y={dot.y}
-                      variant={dot.variant}
-                      offsetIndex={dot.offsetIndex}
-                    />
-                  ))}
-                </div>
-
-                <div className="focus-meta">
-                  <div>
-                    <strong>Quadrant:</strong> {selectedItem.quadrantLabel}
-                  </div>
-                  <div>
-                    <strong>Your Impact:</strong>{" "}
-                    {formatMaybe(selectedItem.currentUserRating?.impact)}
-                  </div>
-                  <div>
-                    <strong>Your Effort:</strong>{" "}
-                    {formatMaybe(selectedItem.currentUserRating?.effort)}
-                  </div>
-                  <div>
-                    <strong>Partner Impact:</strong>{" "}
-                    {formatMaybe(selectedItem.partnerRating?.impact)}
-                  </div>
-                  <div>
-                    <strong>Partner Effort:</strong>{" "}
-                    {formatMaybe(selectedItem.partnerRating?.effort)}
-                  </div>
-                  <div>
-                    <strong>Avg Impact:</strong>{" "}
-                    {formatMaybe(selectedItem.avgImpact)}
-                  </div>
-                  <div>
-                    <strong>Avg Effort:</strong>{" "}
-                    {formatMaybe(selectedItem.avgEffort)}
-                  </div>
-                  <div>
-                    <strong>Impact Diff:</strong>{" "}
-                    {formatMaybe(selectedItem.impactDiff)}
-                  </div>
-                  <div>
-                    <strong>Effort Diff:</strong>{" "}
-                    {formatMaybe(selectedItem.effortDiff)}
-                  </div>
-                </div>
-              </div>
-
-              <RatingRow
-                label="Impact"
-                value={selectedItem.currentUserRating?.impact ?? null}
-                onSelect={(value) => saveRating(selectedItem, "impact", value)}
-              />
-
-              <RatingRow
-                label="Effort"
-                value={selectedItem.currentUserRating?.effort ?? null}
-                onSelect={(value) => saveRating(selectedItem, "effort", value)}
-              />
-            </div>
-          )}
-        </div>
-
-        <div className="card">
-          <div className="top-row">
-            <div>
-              <h2>Decision Workspace</h2>
-              <p className="muted">
-                Cleaner view of what to do first, what needs discussion, and what is done.
-              </p>
-            </div>
-          </div>
-
-          <div className="workspace-controls">
-            <input
-              value={itemSearch}
-              onChange={(e) => setItemSearch(e.target.value)}
-              placeholder="Search items..."
-            />
-
-            <select value={itemSort} onChange={(e) => setItemSort(e.target.value)}>
-              <option value="score_desc">Sort: Highest Score</option>
-              <option value="score_asc">Sort: Lowest Score</option>
-              <option value="impact_desc">Sort: Highest Impact</option>
-              <option value="effort_asc">Sort: Lowest Effort</option>
-              <option value="title_asc">Sort: A to Z</option>
-              <option value="newest">Sort: Newest</option>
-              <option value="oldest">Sort: Oldest</option>
-              <option value="discussion_desc">Sort: Most Disagreement</option>
-            </select>
-
-            <div className="segmented-toggle">
-              <button
-                type="button"
-                className={itemViewMode === "detailed" ? "active" : ""}
-                onClick={() => setItemViewMode("detailed")}
-              >
-                Detailed
-              </button>
-              <button
-                type="button"
-                className={itemViewMode === "compact" ? "active" : ""}
-                onClick={() => setItemViewMode("compact")}
-              >
-                Compact
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="card">
-          <SectionHeader
-            title="Top Priorities"
-            subtitle="Highest scoring active items."
-            count={topPriorityItems.length}
-          />
-
-          {topPriorityItems.length === 0 ? (
-            <p className="muted">No scored active items yet.</p>
-          ) : (
-            <div className="clean-list">
-              {topPriorityItems.map((item, index) => (
-                <ItemCard
-                  key={item.id}
-                  item={item}
-                  index={index}
-                  selected={selectedItemId === item.id}
-                  compact={itemViewMode === "compact"}
-                  onSelect={() => setSelectedItemId(item.id)}
-                  onToggleComplete={() => toggleComplete(item)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="card">
-          <SectionHeader
-            title="Needs Discussion"
-            subtitle="Missing ratings or major differences between people."
-            count={needsDiscussionItems.length}
-          />
-
-          {needsDiscussionItems.length === 0 ? (
-            <p className="muted">Nothing obvious to discuss right now.</p>
-          ) : (
-            <div className="clean-list">
-              {needsDiscussionItems.map((item) => (
-                <ItemCard
-                  key={item.id}
-                  item={item}
-                  selected={selectedItemId === item.id}
-                  compact={itemViewMode === "compact"}
-                  onSelect={() => setSelectedItemId(item.id)}
-                  onToggleComplete={() => toggleComplete(item)}
-                  highlight="discussion"
-                />
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="card">
-          <SectionHeader
-            title="All Active Items"
-            subtitle="Everything still in play."
-            count={filteredActiveItems.length}
-          />
-
-          {filteredActiveItems.length === 0 ? (
-            <p className="muted">No active items match your search.</p>
-          ) : (
-            <div className="clean-list">
-              {filteredActiveItems.map((item, index) => (
-                <ItemCard
-                  key={item.id}
-                  item={item}
-                  index={index}
-                  selected={selectedItemId === item.id}
-                  compact={itemViewMode === "compact"}
-                  onSelect={() => setSelectedItemId(item.id)}
-                  onToggleComplete={() => toggleComplete(item)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="card">
-          <div className="top-row">
-            <div>
-              <h2>Completed</h2>
-              <p className="muted">
-                {filteredCompletedItems.length} completed item
-                {filteredCompletedItems.length === 1 ? "" : "s"}
-              </p>
-            </div>
-            <button type="button" onClick={() => setShowCompleted((prev) => !prev)}>
-              {showCompleted ? "Hide" : "Show"}
-            </button>
-          </div>
-
-          {!showCompleted ? (
-            <p className="muted">Completed items are tucked away.</p>
-          ) : filteredCompletedItems.length === 0 ? (
-            <p className="muted">No completed items.</p>
-          ) : (
-            <div className="clean-list">
-              {filteredCompletedItems.map((item) => (
-                <ItemCard
-                  key={item.id}
-                  item={item}
-                  selected={selectedItemId === item.id}
-                  compact={itemViewMode === "compact"}
-                  onSelect={() => setSelectedItemId(item.id)}
-                  onToggleComplete={() => toggleComplete(item)}
-                  completed
-                />
-              ))}
-            </div>
-          )}
-        </div>
+      <div className="app-shell app-shell-with-toolbar">
+        {appTab === APP_TABS.MAIN && renderMainTab()}
+        {appTab === APP_TABS.TOP && renderTopTab()}
+        {appTab === APP_TABS.DISCUSSION && renderDiscussionTab()}
+        {appTab === APP_TABS.BOARDS && renderBoardsTab()}
 
         {authError && <div className="error">{authError}</div>}
       </div>
 
+      <BottomToolbar tab={appTab} onChange={setAppTab} />
       <style>{styles}</style>
     </>
   );
@@ -1388,129 +1373,81 @@ function RatingRow({ label, value, onSelect }) {
   );
 }
 
-function SectionHeader({ title, subtitle, count }) {
+function BottomToolbar({ tab, onChange }) {
   return (
-    <div className="section-header">
-      <div>
-        <h2>{title}</h2>
-        <p className="muted">{subtitle}</p>
-      </div>
-      <div className="count-pill">{count}</div>
+    <div className="bottom-toolbar">
+      <button
+        type="button"
+        className={tab === APP_TABS.MAIN ? "active" : ""}
+        onClick={() => onChange(APP_TABS.MAIN)}
+      >
+        Main
+      </button>
+      <button
+        type="button"
+        className={tab === APP_TABS.TOP ? "active" : ""}
+        onClick={() => onChange(APP_TABS.TOP)}
+      >
+        Top Priorities
+      </button>
+      <button
+        type="button"
+        className={tab === APP_TABS.DISCUSSION ? "active" : ""}
+        onClick={() => onChange(APP_TABS.DISCUSSION)}
+      >
+        Needs Discussion
+      </button>
+      <button
+        type="button"
+        className={tab === APP_TABS.BOARDS ? "active" : ""}
+        onClick={() => onChange(APP_TABS.BOARDS)}
+      >
+        Boards
+      </button>
     </div>
   );
 }
 
-function ItemCard({
+function DetailRow({
   item,
-  index,
-  selected,
-  compact,
+  rank,
   onSelect,
   onToggleComplete,
-  highlight,
-  completed = false,
+  actionLabel = "Open",
+  discussion = false,
 }) {
-  const badgeClass = badgeClassFromQuadrant(item.quadrantLabel);
-
-  const discussionLabel = !item.currentUserRating || !item.partnerRating
-    ? "Needs Ratings"
-    : item.disagreementScore >= 3
-    ? `Disagreement ${item.disagreementScore}`
-    : null;
-
   return (
-    <button
-      type="button"
-      className={[
-        "item-card",
-        selected ? "selected" : "",
-        compact ? "compact" : "",
-        completed ? "completed" : "",
-        highlight === "discussion" ? "discussion" : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
-      onClick={onSelect}
-    >
-      <div className="item-card-top">
-        <div className="item-card-main">
-          <div className="item-card-title-row">
-            {typeof index === "number" && !completed && (
-              <div className="item-rank-badge">{index + 1}</div>
-            )}
-            <div className="item-card-title">{item.title}</div>
-          </div>
-
-          <div className="item-badges">
-            <span className={`pill ${badgeClass}`}>
-              {item.quadrantLabel}
-            </span>
-
-            {discussionLabel && (
-              <span className="pill pill-discussion">{discussionLabel}</span>
-            )}
-
-            {completed && <span className="pill pill-completed">Completed</span>}
-          </div>
+    <div className={`detail-row ${discussion ? "discussion" : ""}`}>
+      <div className="detail-row-main">
+        <div className="detail-row-title-line">
+          {rank ? <div className="detail-rank">{rank}</div> : null}
+          <div className="detail-title">{item.title}</div>
         </div>
 
-        <div className="item-card-actions">
-          <button
-            type="button"
-            className="small-btn"
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleComplete();
-            }}
-          >
-            {completed ? "Mark Active" : "Complete"}
-          </button>
+        <div className="detail-meta">
+          <span className={`pill ${badgeClassFromQuadrant(item.quadrantLabel)}`}>
+            {item.quadrantLabel}
+          </span>
+
+          <span className="pill pill-neutral">
+            {item.alignmentLabel}
+          </span>
+
+          <span className="pill pill-neutral">
+            Score {formatMaybe(item.score)}
+          </span>
         </div>
       </div>
 
-      <div className="score-strip">
-        <div className="score-chip">
-          <span>Score</span>
-          <strong>{formatMaybe(item.score)}</strong>
-        </div>
-        <div className="score-chip">
-          <span>Avg Impact</span>
-          <strong>{formatMaybe(item.avgImpact)}</strong>
-        </div>
-        <div className="score-chip">
-          <span>Avg Effort</span>
-          <strong>{formatMaybe(item.avgEffort)}</strong>
-        </div>
+      <div className="detail-actions">
+        <button type="button" onClick={onSelect}>
+          {actionLabel}
+        </button>
+        <button type="button" onClick={onToggleComplete}>
+          {item.is_completed ? "Mark Active" : "Complete"}
+        </button>
       </div>
-
-      {!compact && (
-        <div className="ratings-grid">
-          <div className="rating-person-card">
-            <div className="rating-person-label">You</div>
-            <div className="rating-person-values">
-              <span>Impact {formatMaybe(item.currentUserRating?.impact)}</span>
-              <span>Effort {formatMaybe(item.currentUserRating?.effort)}</span>
-            </div>
-          </div>
-
-          <div className="rating-person-card">
-            <div className="rating-person-label">Partner</div>
-            <div className="rating-person-values">
-              <span>Impact {formatMaybe(item.partnerRating?.impact)}</span>
-              <span>Effort {formatMaybe(item.partnerRating?.effort)}</span>
-            </div>
-          </div>
-
-          <div className="rating-person-card">
-            <div className="rating-person-label">Difference</div>
-            <div className="rating-person-values">
-              <span>Impact {formatMaybe(item.impactDiff)}</span>
-              <span>Effort {formatMaybe(item.effortDiff)}</span>
-            </div>
-          </div>
-        </div>
-      )}
-    </button>
+    </div>
   );
 }
 
@@ -1559,38 +1496,17 @@ function getQuadrantLabel(avgImpact, avgEffort) {
   return "Save for Later";
 }
 
+function getAlignmentLabel(currentUserRating, partnerRating, disagreementScore) {
+  if (!currentUserRating || !partnerRating) return "Waiting on ratings";
+  if (disagreementScore === null) return "Waiting on ratings";
+  if (disagreementScore <= 1) return "Aligned";
+  if (disagreementScore <= 3) return "Some disagreement";
+  return "High disagreement";
+}
+
 function humanizeBoardType(type) {
   const found = BOARD_TYPE_OPTIONS.find((option) => option.value === type);
   return found?.label ?? "Custom";
-}
-
-function compareItems(a, b, sortKey) {
-  switch (sortKey) {
-    case "score_asc":
-      return compareNullableNumber(a.score, b.score, true);
-    case "impact_desc":
-      return compareNullableNumber(a.avgImpact, b.avgImpact, false);
-    case "effort_asc":
-      return compareNullableNumber(a.avgEffort, b.avgEffort, true);
-    case "title_asc":
-      return a.title.localeCompare(b.title);
-    case "newest":
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    case "oldest":
-      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-    case "discussion_desc":
-      return (b.disagreementScore ?? 0) - (a.disagreementScore ?? 0);
-    case "score_desc":
-    default:
-      return compareNullableNumber(a.score, b.score, false);
-  }
-}
-
-function compareNullableNumber(a, b, ascending = false) {
-  if (a === null && b === null) return 0;
-  if (a === null) return 1;
-  if (b === null) return -1;
-  return ascending ? a - b : b - a;
 }
 
 function badgeClassFromQuadrant(quadrant) {
@@ -1613,6 +1529,10 @@ const styles = `
     box-sizing: border-box;
   }
 
+  html, body, #root {
+    min-height: 100%;
+  }
+
   body {
     margin: 0;
     font-family: Inter, system-ui, sans-serif;
@@ -1621,8 +1541,7 @@ const styles = `
   }
 
   button,
-  input,
-  select {
+  input {
     font: inherit;
   }
 
@@ -1632,6 +1551,14 @@ const styles = `
     padding: 16px;
     display: grid;
     gap: 16px;
+  }
+
+  .app-shell-with-toolbar {
+    padding-bottom: 96px;
+  }
+
+  .auth-shell {
+    padding-bottom: 16px;
   }
 
   .card {
@@ -1651,11 +1578,11 @@ const styles = `
     margin-top: 48px;
   }
 
-  h1, h2, p {
+  h1, h2, h3, p {
     margin-top: 0;
   }
 
-  h2 {
+  h2, h3 {
     margin-bottom: 6px;
   }
 
@@ -1685,8 +1612,7 @@ const styles = `
     margin-bottom: 8px;
   }
 
-  input,
-  select {
+  input {
     width: 100%;
     padding: 12px 14px;
     border-radius: 12px;
@@ -1725,7 +1651,9 @@ const styles = `
   .auth-toggle button.active,
   .board-option.active,
   .rating-btn.active,
-  .segmented-toggle button.active {
+  .bottom-toolbar button.active,
+  .board-list-item.selected,
+  .compact-item-row.selected {
     background: #f0a329;
     color: #102235;
     border-color: transparent;
@@ -1914,10 +1842,28 @@ const styles = `
     z-index: 2;
   }
 
-  .focus-meta {
+  .focus-summary {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 8px;
+  }
+
+  .summary-pill {
+    background: #0d1d31;
+    border: 1px solid #335070;
+    border-radius: 14px;
+    padding: 12px 14px;
+    display: grid;
+    gap: 4px;
+  }
+
+  .summary-pill span {
+    font-size: 0.8rem;
+    color: #9cb1ca;
+  }
+
+  .summary-pill strong {
+    font-size: 0.95rem;
   }
 
   .rating-row {
@@ -1936,117 +1882,80 @@ const styles = `
     min-height: 44px;
   }
 
-  .workspace-controls {
-    display: grid;
-    grid-template-columns: 1.4fr 1fr auto;
-    gap: 10px;
+  .list-section-header {
+    display: flex;
     align-items: center;
-  }
-
-  .segmented-toggle {
-    display: flex;
-    gap: 8px;
-  }
-
-  .section-header {
-    display: flex;
-    align-items: flex-start;
     justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 12px;
   }
 
-  .count-pill {
-    min-width: 36px;
-    height: 36px;
-    padding: 0 12px;
-    border-radius: 999px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 800;
-    background: #0d1d31;
-    border: 1px solid #335070;
-    color: #d9e4f2;
-  }
-
-  .clean-list {
+  .compact-item-list {
     display: grid;
-    gap: 12px;
+    gap: 8px;
+    max-height: 292px;
+    overflow-y: auto;
+    padding-right: 4px;
   }
 
-  .item-card {
+  .compact-item-list-completed {
+    max-height: 240px;
+  }
+
+  .compact-item-row {
     width: 100%;
     text-align: left;
+    background: #0d1d31;
+    border: 1px solid #2c4765;
+    padding: 12px 14px;
+    min-height: 50px;
+  }
+
+  .compact-item-row.completed {
+    opacity: 0.75;
+  }
+
+  .compact-item-name {
+    display: block;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .detail-list {
     display: grid;
     gap: 12px;
-    background: #0d1d31;
-    border: 1px solid #28415d;
-    border-radius: 16px;
-    padding: 14px;
-    transition: border-color 0.15s ease, transform 0.15s ease;
   }
 
-  .item-card:hover {
-    border-color: #416587;
-  }
-
-  .item-card.selected {
-    border-color: #f0a329;
-    box-shadow: inset 0 0 0 1px rgba(240,163,41,0.35);
-  }
-
-  .item-card.completed {
-    opacity: 0.8;
-  }
-
-  .item-card.discussion {
-    border-color: #7c5a24;
-  }
-
-  .item-card.compact {
-    gap: 10px;
-  }
-
-  .item-card-top {
+  .detail-row {
     display: flex;
     justify-content: space-between;
-    gap: 12px;
     align-items: flex-start;
+    gap: 12px;
+    background: #0d1d31;
+    border: 1px solid #2a4562;
+    border-radius: 16px;
+    padding: 14px;
   }
 
-  .item-card-main {
+  .detail-row.discussion {
+    border-color: #6d5130;
+  }
+
+  .detail-row-main {
     display: grid;
-    gap: 8px;
-    min-width: 0;
+    gap: 10px;
     flex: 1;
+    min-width: 0;
   }
 
-  .item-card-title-row {
+  .detail-row-title-line {
     display: flex;
     align-items: center;
     gap: 10px;
     min-width: 0;
   }
 
-  .item-card-title {
-    font-weight: 800;
-    font-size: 1rem;
-    line-height: 1.3;
-    word-break: break-word;
-  }
-
-  .item-card-actions {
-    display: flex;
-    align-items: flex-start;
-  }
-
-  .small-btn {
-    padding: 8px 10px;
-    font-size: 0.9rem;
-  }
-
-  .item-rank-badge {
+  .detail-rank {
     min-width: 32px;
     height: 32px;
     border-radius: 999px;
@@ -2060,16 +1969,28 @@ const styles = `
     flex-shrink: 0;
   }
 
-  .item-badges {
+  .detail-title {
+    font-weight: 800;
+    line-height: 1.3;
+    word-break: break-word;
+  }
+
+  .detail-meta {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
   }
 
+  .detail-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
   .pill {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
     min-height: 28px;
     padding: 4px 10px;
     border-radius: 999px;
@@ -2102,73 +2023,34 @@ const styles = `
     border-color: rgba(156, 177, 202, 0.3);
   }
 
-  .pill-unrated {
+  .pill-unrated,
+  .pill-neutral {
     background: rgba(255, 255, 255, 0.08);
     color: #d9e4f2;
     border-color: rgba(255,255,255,0.16);
   }
 
-  .pill-discussion {
-    background: rgba(255, 95, 95, 0.16);
-    color: #ffd6d6;
-    border-color: rgba(255, 95, 95, 0.32);
-  }
-
-  .pill-completed {
-    background: rgba(72, 187, 120, 0.16);
-    color: #d7ffe5;
-    border-color: rgba(72, 187, 120, 0.3);
-  }
-
-  .score-strip {
+  .bottom-toolbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, 1fr);
     gap: 8px;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    background: rgba(10, 19, 31, 0.96);
+    border-top: 1px solid #233b58;
+    backdrop-filter: blur(10px);
   }
 
-  .score-chip {
-    background: #11243b;
-    border: 1px solid #26415f;
-    border-radius: 14px;
-    padding: 10px 12px;
-    display: grid;
-    gap: 4px;
-  }
-
-  .score-chip span {
-    font-size: 0.78rem;
-    color: #9cb1ca;
-  }
-
-  .score-chip strong {
-    font-size: 1rem;
-  }
-
-  .ratings-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
-  }
-
-  .rating-person-card {
-    background: #11243b;
-    border: 1px solid #26415f;
-    border-radius: 14px;
-    padding: 10px 12px;
-    display: grid;
-    gap: 6px;
-  }
-
-  .rating-person-label {
-    font-size: 0.78rem;
-    color: #9cb1ca;
-    font-weight: 700;
-  }
-
-  .rating-person-values {
-    display: grid;
-    gap: 4px;
-    font-size: 0.92rem;
+  .bottom-toolbar button {
+    min-height: 48px;
+    padding: 10px 8px;
+    font-size: 0.88rem;
+    text-align: center;
+    background: #13273f;
   }
 
   .error {
@@ -2192,8 +2074,7 @@ const styles = `
     .selected-header,
     .inline-form,
     .header-actions,
-    .item-card-top,
-    .section-header {
+    .detail-row {
       display: grid;
     }
 
@@ -2206,20 +2087,18 @@ const styles = `
       grid-template-columns: 1fr 1fr;
     }
 
-    .focus-meta,
-    .ratings-grid,
-    .score-strip,
-    .workspace-controls {
+    .focus-summary {
       grid-template-columns: 1fr;
     }
 
-    .segmented-toggle {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
+    .detail-actions {
+      flex-direction: row;
+      flex-wrap: wrap;
     }
 
-    .item-card-actions {
-      justify-content: flex-start;
+    .bottom-toolbar button {
+      font-size: 0.8rem;
+      padding: 8px 6px;
     }
   }
 `;
