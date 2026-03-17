@@ -36,6 +36,7 @@ export default function App() {
 
   const [items, setItems] = useState([]);
   const [selectedItemId, setSelectedItemId] = useState(null);
+  const [showAllGridItems, setShowAllGridItems] = useState(false);
 
   const [itemTitle, setItemTitle] = useState("");
   const [itemError, setItemError] = useState("");
@@ -236,6 +237,7 @@ export default function App() {
       partnerRating,
       impactDiff,
       effortDiff,
+      quadrantLabel: getQuadrantLabel(avgImpact, avgEffort),
     };
   }
 
@@ -436,6 +438,14 @@ export default function App() {
   const selectedItem = useMemo(() => {
     return items.find((item) => item.id === selectedItemId) ?? null;
   }, [items, selectedItemId]);
+
+  const gridItems = useMemo(() => {
+    if (!showAllGridItems) return [];
+    return items.filter(
+      (item) =>
+        item.avgImpact !== null && item.avgEffort !== null && !item.is_completed
+    );
+  }, [items, showAllGridItems]);
 
   if (loading) {
     return (
@@ -651,7 +661,15 @@ export default function App() {
         </div>
 
         <div className="card">
-          <h2>Focused Item</h2>
+          <div className="top-row">
+            <h2>Focused Grid</h2>
+            <button
+              type="button"
+              onClick={() => setShowAllGridItems((prev) => !prev)}
+            >
+              {showAllGridItems ? "Show Selected Only" : "Show All Items"}
+            </button>
+          </div>
 
           {!selectedItem ? (
             <p className="muted">Add your first item to get started.</p>
@@ -663,9 +681,7 @@ export default function App() {
                   <div className="muted">
                     {selectedItem.score === null
                       ? "Needs rating"
-                      : `Score ${selectedItem.score.toFixed(1)} • Avg Impact ${formatMaybe(
-                          selectedItem.avgImpact
-                        )} • Avg Effort ${formatMaybe(selectedItem.avgEffort)}`}
+                      : `Score ${selectedItem.score.toFixed(1)} • ${selectedItem.quadrantLabel}`}
                   </div>
                 </div>
 
@@ -676,8 +692,20 @@ export default function App() {
 
               <div className="focus-grid">
                 <div className="focus-box">
-                  <div className="focus-label left-top">High Impact</div>
-                  <div className="focus-label right-bottom">High Effort</div>
+                  <div className="quadrant top-left">Quick Win</div>
+                  <div className="quadrant top-right">Big Investment</div>
+                  <div className="quadrant bottom-left">Low-Stakes</div>
+                  <div className="quadrant bottom-right">Probably Skip</div>
+
+                  {gridItems.map((item) => (
+                    <MiniDot
+                      key={item.id}
+                      x={item.avgEffort}
+                      y={item.avgImpact}
+                      selected={item.id === selectedItem.id}
+                      label={item.title}
+                    />
+                  ))}
 
                   {selectedItem.currentUserRating && (
                     <Dot
@@ -710,12 +738,23 @@ export default function App() {
 
                 <div className="focus-meta">
                   <div>
+                    <strong>Quadrant:</strong> {selectedItem.quadrantLabel}
+                  </div>
+                  <div>
                     <strong>Your Impact:</strong>{" "}
                     {formatMaybe(selectedItem.currentUserRating?.impact)}
                   </div>
                   <div>
                     <strong>Your Effort:</strong>{" "}
                     {formatMaybe(selectedItem.currentUserRating?.effort)}
+                  </div>
+                  <div>
+                    <strong>Avg Impact:</strong>{" "}
+                    {formatMaybe(selectedItem.avgImpact)}
+                  </div>
+                  <div>
+                    <strong>Avg Effort:</strong>{" "}
+                    {formatMaybe(selectedItem.avgEffort)}
                   </div>
                   <div>
                     <strong>Impact Diff:</strong>{" "}
@@ -765,9 +804,7 @@ export default function App() {
                     <div className="item-sub muted">
                       {item.score === null
                         ? "Needs rating"
-                        : `Score ${item.score.toFixed(1)} • Impact ${formatMaybe(
-                            item.avgImpact
-                          )} • Effort ${formatMaybe(item.avgEffort)}`}
+                        : `Score ${item.score.toFixed(1)} • ${item.quadrantLabel}`}
                     </div>
                   </div>
                 </button>
@@ -819,9 +856,34 @@ function Dot({ x, y, label, variant }) {
   );
 }
 
+function MiniDot({ x, y, selected, label }) {
+  const left = `${((x - 1) / 4) * 100}%`;
+  const bottom = `${((y - 1) / 4) * 100}%`;
+
+  return (
+    <div
+      className={`mini-dot ${selected ? "selected" : ""}`}
+      style={{ left, bottom }}
+      title={label}
+    />
+  );
+}
+
 function formatMaybe(value) {
   if (value === null || value === undefined) return "—";
   return Number.isInteger(value) ? value : value.toFixed(1);
+}
+
+function getQuadrantLabel(avgImpact, avgEffort) {
+  if (avgImpact === null || avgEffort === null) return "Unrated";
+
+  const highImpact = avgImpact >= 3;
+  const highEffort = avgEffort >= 3;
+
+  if (highImpact && !highEffort) return "Quick Win";
+  if (highImpact && highEffort) return "Big Investment";
+  if (!highImpact && !highEffort) return "Low-Stakes";
+  return "Probably Skip";
 }
 
 const styles = `
@@ -987,7 +1049,7 @@ const styles = `
 
   .focus-box {
     position: relative;
-    height: 280px;
+    height: 320px;
     border-radius: 18px;
     border: 1px solid #335070;
     background:
@@ -998,21 +1060,32 @@ const styles = `
     overflow: hidden;
   }
 
-  .focus-label {
+  .quadrant {
     position: absolute;
-    font-size: 0.8rem;
-    color: #8ea8c6;
+    font-size: 0.78rem;
+    color: #7f96b2;
     font-weight: 700;
+    pointer-events: none;
   }
 
-  .left-top {
+  .top-left {
     top: 10px;
     left: 10px;
   }
 
-  .right-bottom {
+  .top-right {
+    top: 10px;
     right: 10px;
+  }
+
+  .bottom-left {
     bottom: 10px;
+    left: 10px;
+  }
+
+  .bottom-right {
+    bottom: 10px;
+    right: 10px;
   }
 
   .dot {
@@ -1022,6 +1095,7 @@ const styles = `
     height: 18px;
     border-radius: 999px;
     border: 2px solid white;
+    z-index: 3;
   }
 
   .dot span {
@@ -1044,6 +1118,25 @@ const styles = `
 
   .dot.avg {
     background: #f0a329;
+  }
+
+  .mini-dot {
+    position: absolute;
+    transform: translate(-50%, 50%);
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: rgba(220, 233, 247, 0.45);
+    border: 1px solid rgba(255,255,255,0.25);
+    z-index: 1;
+  }
+
+  .mini-dot.selected {
+    width: 14px;
+    height: 14px;
+    background: rgba(240, 163, 41, 0.8);
+    border-color: rgba(255,255,255,0.5);
+    z-index: 2;
   }
 
   .focus-meta {
