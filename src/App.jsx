@@ -26,13 +26,16 @@ export default function App() {
   const [profile, setProfile] = useState(null);
   const [household, setHousehold] = useState(null);
   const [board, setBoard] = useState(null);
+  const [memberRole, setMemberRole] = useState(null);
 
+  const [setupMode, setSetupMode] = useState("create");
   const [setupForm, setSetupForm] = useState({
     householdName: "",
     boardType: "home_projects",
   });
   const [setupLoading, setSetupLoading] = useState(false);
   const [setupError, setSetupError] = useState("");
+  const [joinCode, setJoinCode] = useState("");
 
   const [items, setItems] = useState([]);
   const [selectedItemId, setSelectedItemId] = useState(null);
@@ -42,6 +45,11 @@ export default function App() {
   const [itemError, setItemError] = useState("");
   const [itemMessage, setItemMessage] = useState("");
   const [addingItem, setAddingItem] = useState(false);
+
+  const [inviteCode, setInviteCode] = useState("");
+  const [inviteMessage, setInviteMessage] = useState("");
+  const [inviteError, setInviteError] = useState("");
+  const [inviteLoading, setInviteLoading] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -78,6 +86,7 @@ export default function App() {
       setProfile(null);
       setHousehold(null);
       setBoard(null);
+      setMemberRole(null);
       setItems([]);
       setSelectedItemId(null);
       return;
@@ -92,6 +101,8 @@ export default function App() {
     setSetupError("");
     setItemError("");
     setItemMessage("");
+    setInviteError("");
+    setInviteMessage("");
 
     try {
       const { data: profileData, error: profileError } = await supabase
@@ -126,6 +137,7 @@ export default function App() {
       if (!memberData) {
         setHousehold(null);
         setBoard(null);
+        setMemberRole(null);
         setItems([]);
         setSelectedItemId(null);
         setLoading(false);
@@ -133,6 +145,7 @@ export default function App() {
       }
 
       setHousehold(memberData.households);
+      setMemberRole(memberData.role);
 
       const { data: boardData, error: boardError } = await supabase
         .from("boards")
@@ -297,6 +310,33 @@ export default function App() {
     e.preventDefault();
     setSetupError("");
 
+    if (setupMode === "join") {
+      const code = joinCode.trim();
+      if (!code) {
+        setSetupError("Please enter an invite code.");
+        return;
+      }
+
+      setSetupLoading(true);
+
+      try {
+        const { error } = await supabase.rpc("join_household_by_code", {
+          _token: code,
+        });
+
+        if (error) throw error;
+
+        await loadAppState();
+      } catch (error) {
+        console.error(error);
+        setSetupError(error.message || "Failed to join household.");
+      } finally {
+        setSetupLoading(false);
+      }
+
+      return;
+    }
+
     const householdName = setupForm.householdName.trim();
     if (!householdName) {
       setSetupError("Please enter a household name.");
@@ -435,6 +475,29 @@ export default function App() {
     }
   }
 
+  async function generateInviteCode() {
+    setInviteError("");
+    setInviteMessage("");
+    setInviteLoading(true);
+
+    try {
+      const { data, error } = await supabase.rpc("create_household_invite", {
+        _household_id: household.id,
+      });
+
+      if (error) throw error;
+
+      const row = Array.isArray(data) ? data[0] : data;
+      setInviteCode(row?.token || "");
+      setInviteMessage("Invite code generated.");
+    } catch (error) {
+      console.error(error);
+      setInviteError(error.message || "Failed to generate invite code.");
+    } finally {
+      setInviteLoading(false);
+    }
+  }
+
   const selectedItem = useMemo(() => {
     return items.find((item) => item.id === selectedItemId) ?? null;
   }, [items, selectedItemId]);
@@ -559,53 +622,93 @@ export default function App() {
           <div className="card">
             <div className="top-row">
               <div>
-                <h1>Choose your board type</h1>
-                <p className="muted">Start with one board. Keep it focused.</p>
+                <h1>{setupMode === "create" ? "Choose your board type" : "Join a household"}</h1>
+                <p className="muted">
+                  {setupMode === "create"
+                    ? "Start with one board. Keep it focused."
+                    : "Enter the invite code from your partner."}
+                </p>
               </div>
               <button type="button" onClick={handleSignOut}>
                 Sign Out
               </button>
             </div>
 
-            <form onSubmit={handleSetupSubmit} className="stack">
-              <label>
-                Household Name
-                <input
-                  value={setupForm.householdName}
-                  onChange={(e) =>
-                    setSetupForm((prev) => ({
-                      ...prev,
-                      householdName: e.target.value,
-                    }))
-                  }
-                  placeholder="Nate & Amanda"
-                />
-              </label>
+            <div className="auth-toggle">
+              <button
+                type="button"
+                className={setupMode === "create" ? "active" : ""}
+                onClick={() => {
+                  setSetupMode("create");
+                  setSetupError("");
+                }}
+              >
+                Create
+              </button>
+              <button
+                type="button"
+                className={setupMode === "join" ? "active" : ""}
+                onClick={() => {
+                  setSetupMode("join");
+                  setSetupError("");
+                }}
+              >
+                Join
+              </button>
+            </div>
 
-              <div>
-                <div className="field-label">Board Type</div>
-                <div className="board-grid">
-                  {BOARD_TYPE_OPTIONS.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      className={
-                        setupForm.boardType === option.value
-                          ? "board-option active"
-                          : "board-option"
-                      }
-                      onClick={() =>
+            <form onSubmit={handleSetupSubmit} className="stack">
+              {setupMode === "create" ? (
+                <>
+                  <label>
+                    Household Name
+                    <input
+                      value={setupForm.householdName}
+                      onChange={(e) =>
                         setSetupForm((prev) => ({
                           ...prev,
-                          boardType: option.value,
+                          householdName: e.target.value,
                         }))
                       }
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
+                      placeholder="Nate & Amanda"
+                    />
+                  </label>
+
+                  <div>
+                    <div className="field-label">Board Type</div>
+                    <div className="board-grid">
+                      {BOARD_TYPE_OPTIONS.map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          className={
+                            setupForm.boardType === option.value
+                              ? "board-option active"
+                              : "board-option"
+                          }
+                          onClick={() =>
+                            setSetupForm((prev) => ({
+                              ...prev,
+                              boardType: option.value,
+                            }))
+                          }
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <label>
+                  Invite Code
+                  <input
+                    value={joinCode}
+                    onChange={(e) => setJoinCode(e.target.value)}
+                    placeholder="Paste code here"
+                  />
+                </label>
+              )}
 
               {setupError && <div className="error">{setupError}</div>}
 
@@ -614,7 +717,11 @@ export default function App() {
                 className="primary"
                 disabled={setupLoading}
               >
-                {setupLoading ? "Creating..." : "Create Board"}
+                {setupLoading
+                  ? "Working..."
+                  : setupMode === "create"
+                  ? "Create Board"
+                  : "Join Household"}
               </button>
             </form>
           </div>
@@ -641,6 +748,34 @@ export default function App() {
               Sign Out
             </button>
           </div>
+        </div>
+
+        <div className="card">
+          <div className="top-row">
+            <div>
+              <h2>Invite Partner</h2>
+              <p className="muted">
+                Share a one-time code so your partner can join this household.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={generateInviteCode}
+              disabled={inviteLoading}
+            >
+              {inviteLoading ? "Generating..." : "Generate Code"}
+            </button>
+          </div>
+
+          {inviteCode && (
+            <div className="invite-code-box">
+              <div className="invite-code-label">Invite Code</div>
+              <div className="invite-code">{inviteCode}</div>
+            </div>
+          )}
+
+          {inviteError && <div className="error top-gap">{inviteError}</div>}
+          {inviteMessage && <div className="success top-gap">{inviteMessage}</div>}
         </div>
 
         <div className="card">
@@ -846,11 +981,7 @@ function Dot({ x, y, label, variant }) {
   const bottom = `${((y - 1) / 4) * 100}%`;
 
   return (
-    <div
-      className={`dot ${variant}`}
-      style={{ left, bottom }}
-      title={label}
-    >
+    <div className={`dot ${variant}`} style={{ left, bottom }} title={label}>
       <span>{label}</span>
     </div>
   );
@@ -1028,6 +1159,27 @@ const styles = `
 
   .top-gap {
     margin-top: 12px;
+  }
+
+  .invite-code-box {
+    margin-top: 12px;
+    padding: 14px;
+    border-radius: 14px;
+    background: #0d1d31;
+    border: 1px solid #335070;
+  }
+
+  .invite-code-label {
+    font-size: 0.85rem;
+    color: #8ea8c6;
+    margin-bottom: 6px;
+  }
+
+  .invite-code {
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    word-break: break-all;
   }
 
   .selected-header {
