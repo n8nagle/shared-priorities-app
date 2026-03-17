@@ -25,8 +25,11 @@ export default function App() {
 
   const [profile, setProfile] = useState(null);
   const [household, setHousehold] = useState(null);
-  const [board, setBoard] = useState(null);
   const [memberRole, setMemberRole] = useState(null);
+
+  const [boards, setBoards] = useState([]);
+  const [selectedBoardId, setSelectedBoardId] = useState(null);
+  const [showBoardHub, setShowBoardHub] = useState(false);
 
   const [setupMode, setSetupMode] = useState("create");
   const [setupForm, setSetupForm] = useState({
@@ -37,9 +40,17 @@ export default function App() {
   const [setupError, setSetupError] = useState("");
   const [joinCode, setJoinCode] = useState("");
 
+  const [createBoardForm, setCreateBoardForm] = useState({
+    title: "",
+    boardType: "custom",
+  });
+  const [createBoardLoading, setCreateBoardLoading] = useState(false);
+  const [createBoardError, setCreateBoardError] = useState("");
+
   const [items, setItems] = useState([]);
   const [selectedItemId, setSelectedItemId] = useState(null);
   const [showAllGridItems, setShowAllGridItems] = useState(false);
+  const [showCompleted, setShowCompleted] = useState(false);
 
   const [itemTitle, setItemTitle] = useState("");
   const [itemError, setItemError] = useState("");
@@ -85,15 +96,27 @@ export default function App() {
     if (!user) {
       setProfile(null);
       setHousehold(null);
-      setBoard(null);
       setMemberRole(null);
+      setBoards([]);
+      setSelectedBoardId(null);
       setItems([]);
       setSelectedItemId(null);
+      setShowBoardHub(false);
       return;
     }
 
     loadAppState();
   }, [user]);
+
+  useEffect(() => {
+    if (!selectedBoardId) {
+      setItems([]);
+      setSelectedItemId(null);
+      return;
+    }
+
+    loadBoardItems(selectedBoardId);
+  }, [selectedBoardId]);
 
   async function loadAppState() {
     setLoading(true);
@@ -103,6 +126,7 @@ export default function App() {
     setItemMessage("");
     setInviteError("");
     setInviteMessage("");
+    setCreateBoardError("");
 
     try {
       const { data: profileData, error: profileError } = await supabase
@@ -136,10 +160,12 @@ export default function App() {
 
       if (!memberData) {
         setHousehold(null);
-        setBoard(null);
         setMemberRole(null);
+        setBoards([]);
+        setSelectedBoardId(null);
         setItems([]);
         setSelectedItemId(null);
+        setShowBoardHub(false);
         setLoading(false);
         return;
       }
@@ -147,26 +173,7 @@ export default function App() {
       setHousehold(memberData.households);
       setMemberRole(memberData.role);
 
-      const { data: boardData, error: boardError } = await supabase
-        .from("boards")
-        .select("*")
-        .eq("household_id", memberData.household_id)
-        .eq("is_active", true)
-        .limit(1)
-        .maybeSingle();
-
-      if (boardError) throw boardError;
-
-      setBoard(boardData ?? null);
-
-      if (!boardData) {
-        setItems([]);
-        setSelectedItemId(null);
-        setLoading(false);
-        return;
-      }
-
-      await loadBoardItems(boardData.id);
+      await loadBoards(memberData.household_id);
     } catch (error) {
       console.error(error);
       setAuthError(error.message || "Failed to load app state.");
@@ -175,37 +182,64 @@ export default function App() {
     }
   }
 
-  async function loadBoardItems(boardId) {
+  async function loadBoards(householdId) {
     const { data, error } = await supabase
-      .from("items")
-      .select(
-        `
-        *,
-        ratings (
-          id,
-          item_id,
-          user_id,
-          impact,
-          effort,
-          created_at,
-          updated_at
-        )
-      `
-      )
-      .eq("board_id", boardId)
+      .from("boards")
+      .select("*")
+      .eq("household_id", householdId)
       .order("created_at", { ascending: true });
 
     if (error) throw error;
 
-    const hydrated = (data ?? []).map((item) => hydrateItem(item));
-    hydrated.sort(sortItems);
+    const nextBoards = data ?? [];
+    setBoards(nextBoards);
 
-    setItems(hydrated);
-
-    setSelectedItemId((prev) => {
-      if (prev && hydrated.some((item) => item.id === prev)) return prev;
-      return hydrated[0]?.id ?? null;
+    setSelectedBoardId((prev) => {
+      if (prev && nextBoards.some((board) => board.id === prev)) return prev;
+      return nextBoards[0]?.id ?? null;
     });
+
+    if (nextBoards.length === 0) {
+      setShowBoardHub(true);
+    }
+  }
+
+  async function loadBoardItems(boardId) {
+    try {
+      const { data, error } = await supabase
+        .from("items")
+        .select(
+          `
+          *,
+          ratings (
+            id,
+            item_id,
+            user_id,
+            impact,
+            effort,
+            created_at,
+            updated_at
+          )
+        `
+        )
+        .eq("board_id", boardId)
+        .order("created_at", { ascending: true });
+
+      if (error) throw error;
+
+      const hydrated = (data ?? []).map((item) => hydrateItem(item));
+      hydrated.sort(sortItems);
+
+      setItems(hydrated);
+
+      setSelectedItemId((prev) => {
+        if (prev && hydrated.some((item) => item.id === prev)) return prev;
+        return hydrated.find((item) => !item.is_completed)?.id ?? hydrated[0]?.id ?? null;
+      });
+    } catch (error) {
+      console.error(error);
+      setItemError(error.message || "Failed to load items.");
+    }
   }
 
   function hydrateItem(item) {
@@ -372,21 +406,67 @@ export default function App() {
           (option) => option.value === setupForm.boardType
         )?.label ?? "Custom";
 
-      const { error: boardError } = await supabase.from("boards").insert({
-        household_id: householdInsert.id,
-        title: selectedBoardLabel,
-        board_type: setupForm.boardType,
-        is_active: true,
-      });
+      const { data: boardInsert, error: boardError } = await supabase
+        .from("boards")
+        .insert({
+          household_id: householdInsert.id,
+          title: selectedBoardLabel,
+          board_type: setupForm.boardType,
+          is_active: true,
+        })
+        .select()
+        .single();
 
       if (boardError) throw boardError;
 
       await loadAppState();
+      setSelectedBoardId(boardInsert.id);
+      setShowBoardHub(false);
     } catch (error) {
       console.error(error);
       setSetupError(error.message || "Failed to create setup.");
     } finally {
       setSetupLoading(false);
+    }
+  }
+
+  async function handleCreateBoard(e) {
+    e.preventDefault();
+    setCreateBoardError("");
+
+    const title =
+      createBoardForm.title.trim() ||
+      BOARD_TYPE_OPTIONS.find((option) => option.value === createBoardForm.boardType)?.label ||
+      "New Board";
+
+    setCreateBoardLoading(true);
+
+    try {
+      const { data, error } = await supabase
+        .from("boards")
+        .insert({
+          household_id: household.id,
+          title,
+          board_type: createBoardForm.boardType,
+          is_active: true,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      await loadBoards(household.id);
+      setSelectedBoardId(data.id);
+      setCreateBoardForm({
+        title: "",
+        boardType: "custom",
+      });
+      setShowBoardHub(false);
+    } catch (error) {
+      console.error(error);
+      setCreateBoardError(error.message || "Failed to create board.");
+    } finally {
+      setCreateBoardLoading(false);
     }
   }
 
@@ -405,7 +485,7 @@ export default function App() {
 
     try {
       const { error } = await supabase.from("items").insert({
-        board_id: board.id,
+        board_id: selectedBoardId,
         title,
         created_by: user.id,
       });
@@ -414,7 +494,7 @@ export default function App() {
 
       setItemTitle("");
       setItemMessage("Item added.");
-      await loadBoardItems(board.id);
+      await loadBoardItems(selectedBoardId);
     } catch (error) {
       console.error(error);
       setItemError(error.message || "Failed to add item.");
@@ -444,7 +524,7 @@ export default function App() {
 
       if (error) throw error;
 
-      await loadBoardItems(board.id);
+      await loadBoardItems(selectedBoardId);
     } catch (error) {
       console.error(error);
       setItemError(error.message || "Failed to save rating.");
@@ -468,7 +548,7 @@ export default function App() {
 
       if (error) throw error;
 
-      await loadBoardItems(board.id);
+      await loadBoardItems(selectedBoardId);
     } catch (error) {
       console.error(error);
       setItemError(error.message || "Failed to update item.");
@@ -498,17 +578,67 @@ export default function App() {
     }
   }
 
+  const selectedBoard = useMemo(() => {
+    return boards.find((board) => board.id === selectedBoardId) ?? null;
+  }, [boards, selectedBoardId]);
+
   const selectedItem = useMemo(() => {
     return items.find((item) => item.id === selectedItemId) ?? null;
   }, [items, selectedItemId]);
 
+  const activeItems = useMemo(() => items.filter((item) => !item.is_completed), [items]);
+  const completedItems = useMemo(() => items.filter((item) => item.is_completed), [items]);
+
   const gridItems = useMemo(() => {
     if (!showAllGridItems) return [];
-    return items.filter(
-      (item) =>
-        item.avgImpact !== null && item.avgEffort !== null && !item.is_completed
+    return activeItems.filter(
+      (item) => item.avgImpact !== null && item.avgEffort !== null
     );
-  }, [items, showAllGridItems]);
+  }, [activeItems, showAllGridItems]);
+
+  const selectedDots = useMemo(() => {
+    if (!selectedItem) return [];
+
+    const rawDots = [];
+
+    if (selectedItem.currentUserRating) {
+      rawDots.push({
+        key: "you",
+        label: "You",
+        x: selectedItem.currentUserRating.effort,
+        y: selectedItem.currentUserRating.impact,
+        variant: "you",
+      });
+    }
+
+    if (selectedItem.partnerRating) {
+      rawDots.push({
+        key: "partner",
+        label: "Partner",
+        x: selectedItem.partnerRating.effort,
+        y: selectedItem.partnerRating.impact,
+        variant: "partner",
+      });
+    }
+
+    if (selectedItem.avgImpact !== null && selectedItem.avgEffort !== null) {
+      rawDots.push({
+        key: "avg",
+        label: "Avg",
+        x: selectedItem.avgEffort,
+        y: selectedItem.avgImpact,
+        variant: "avg",
+      });
+    }
+
+    const counts = {};
+    return rawDots.map((dot) => {
+      const key = `${dot.x}-${dot.y}`;
+      const offsetIndex = counts[key] ?? 0;
+      counts[key] = offsetIndex + 1;
+      return { ...dot, offsetIndex };
+    });
+  }, [selectedItem]);
 
   if (loading) {
     return (
@@ -615,7 +745,7 @@ export default function App() {
     );
   }
 
-  if (!household || !board) {
+  if (!household) {
     return (
       <>
         <div className="app-shell">
@@ -731,6 +861,106 @@ export default function App() {
     );
   }
 
+  if (showBoardHub || !selectedBoard) {
+    return (
+      <>
+        <div className="app-shell">
+          <div className="card">
+            <div className="top-row">
+              <div>
+                <div className="eyebrow">{household.name}</div>
+                <h1>Boards</h1>
+                <p className="muted">
+                  Choose a board or create a new one.
+                </p>
+              </div>
+              <button type="button" onClick={handleSignOut}>
+                Sign Out
+              </button>
+            </div>
+          </div>
+
+          <div className="card">
+            <h2>Your Boards</h2>
+
+            {boards.length === 0 ? (
+              <p className="muted">No boards yet.</p>
+            ) : (
+              <div className="board-list">
+                {boards.map((board) => (
+                  <button
+                    key={board.id}
+                    type="button"
+                    className="board-list-item"
+                    onClick={() => {
+                      setSelectedBoardId(board.id);
+                      setShowBoardHub(false);
+                    }}
+                  >
+                    <div className="board-list-title">{board.title}</div>
+                    <div className="muted">{humanizeBoardType(board.board_type)}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="card">
+            <h2>Create Board</h2>
+            <form onSubmit={handleCreateBoard} className="stack">
+              <label>
+                Board Title
+                <input
+                  value={createBoardForm.title}
+                  onChange={(e) =>
+                    setCreateBoardForm((prev) => ({
+                      ...prev,
+                      title: e.target.value,
+                    }))
+                  }
+                  placeholder="Bathroom Remodel"
+                />
+              </label>
+
+              <div>
+                <div className="field-label">Board Type</div>
+                <div className="board-grid">
+                  {BOARD_TYPE_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={
+                        createBoardForm.boardType === option.value
+                          ? "board-option active"
+                          : "board-option"
+                      }
+                      onClick={() =>
+                        setCreateBoardForm((prev) => ({
+                          ...prev,
+                          boardType: option.value,
+                        }))
+                      }
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {createBoardError && <div className="error">{createBoardError}</div>}
+
+              <button type="submit" className="primary" disabled={createBoardLoading}>
+                {createBoardLoading ? "Creating..." : "Create Board"}
+              </button>
+            </form>
+          </div>
+
+          <style>{styles}</style>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <div className="app-shell">
@@ -738,15 +968,20 @@ export default function App() {
           <div className="top-row">
             <div>
               <div className="eyebrow">{household.name}</div>
-              <h1>{board.title}</h1>
+              <h1>{selectedBoard.title}</h1>
               <p className="muted">
                 Logged in as {profile?.display_name || user.email}
               </p>
             </div>
 
-            <button type="button" onClick={handleSignOut}>
-              Sign Out
-            </button>
+            <div className="header-actions">
+              <button type="button" onClick={() => setShowBoardHub(true)}>
+                Boards
+              </button>
+              <button type="button" onClick={handleSignOut}>
+                Sign Out
+              </button>
+            </div>
           </div>
         </div>
 
@@ -795,7 +1030,7 @@ export default function App() {
           {itemMessage && <div className="success top-gap">{itemMessage}</div>}
         </div>
 
-        <div className="card">
+        <div className="card selected-card">
           <div className="top-row">
             <h2>Focused Grid</h2>
             <button
@@ -830,7 +1065,7 @@ export default function App() {
                   <div className="quadrant top-left">Quick Win</div>
                   <div className="quadrant top-right">Big Investment</div>
                   <div className="quadrant bottom-left">Low-Stakes</div>
-                  <div className="quadrant bottom-right">Probably Skip</div>
+                  <div className="quadrant bottom-right">Save for Later</div>
 
                   {gridItems.map((item) => (
                     <MiniDot
@@ -842,33 +1077,16 @@ export default function App() {
                     />
                   ))}
 
-                  {selectedItem.currentUserRating && (
+                  {selectedDots.map((dot) => (
                     <Dot
-                      label="You"
-                      x={selectedItem.currentUserRating.effort}
-                      y={selectedItem.currentUserRating.impact}
-                      variant="you"
+                      key={dot.key}
+                      label={dot.label}
+                      x={dot.x}
+                      y={dot.y}
+                      variant={dot.variant}
+                      offsetIndex={dot.offsetIndex}
                     />
-                  )}
-
-                  {selectedItem.partnerRating && (
-                    <Dot
-                      label="Partner"
-                      x={selectedItem.partnerRating.effort}
-                      y={selectedItem.partnerRating.impact}
-                      variant="partner"
-                    />
-                  )}
-
-                  {selectedItem.avgImpact !== null &&
-                    selectedItem.avgEffort !== null && (
-                      <Dot
-                        label="Avg"
-                        x={selectedItem.avgEffort}
-                        y={selectedItem.avgImpact}
-                        variant="avg"
-                      />
-                    )}
+                  ))}
                 </div>
 
                 <div className="focus-meta">
@@ -918,19 +1136,17 @@ export default function App() {
         </div>
 
         <div className="card">
-          <h2>Ranked Items</h2>
+          <h2>Active Items</h2>
 
-          {items.length === 0 ? (
-            <p className="muted">No items yet.</p>
+          {activeItems.length === 0 ? (
+            <p className="muted">No active items yet.</p>
           ) : (
             <div className="item-list">
-              {items.map((item, index) => (
+              {activeItems.map((item, index) => (
                 <button
                   key={item.id}
                   type="button"
-                  className={`item-row ${selectedItemId === item.id ? "selected" : ""} ${
-                    item.is_completed ? "completed" : ""
-                  }`}
+                  className={`item-row ${selectedItemId === item.id ? "selected" : ""}`}
                   onClick={() => setSelectedItemId(item.id)}
                 >
                   <div className="item-rank">{index + 1}</div>
@@ -940,6 +1156,44 @@ export default function App() {
                       {item.score === null
                         ? "Needs rating"
                         : `Score ${item.score.toFixed(1)} • ${item.quadrantLabel}`}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="card">
+          <div className="top-row">
+            <h2>Completed</h2>
+            <button type="button" onClick={() => setShowCompleted((prev) => !prev)}>
+              {showCompleted ? "Hide" : "Show"}
+            </button>
+          </div>
+
+          {!showCompleted ? (
+            <p className="muted">
+              {completedItems.length} completed item{completedItems.length === 1 ? "" : "s"}
+            </p>
+          ) : completedItems.length === 0 ? (
+            <p className="muted">No completed items.</p>
+          ) : (
+            <div className="item-list">
+              {completedItems.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`item-row completed ${selectedItemId === item.id ? "selected" : ""}`}
+                  onClick={() => setSelectedItemId(item.id)}
+                >
+                  <div className="item-rank">✓</div>
+                  <div className="item-main">
+                    <div className="item-title">{item.title}</div>
+                    <div className="item-sub muted">
+                      {item.score === null
+                        ? "Completed"
+                        : `Completed • Score ${item.score.toFixed(1)}`}
                     </div>
                   </div>
                 </button>
@@ -976,20 +1230,20 @@ function RatingRow({ label, value, onSelect }) {
   );
 }
 
-function Dot({ x, y, label, variant }) {
-  const left = `${((x - 1) / 4) * 100}%`;
-  const bottom = `${((y - 1) / 4) * 100}%`;
+function Dot({ x, y, label, variant, offsetIndex = 0 }) {
+  const left = `${coordToPercent(x)}%`;
+  const bottom = `${coordToPercent(y)}%`;
 
   return (
     <div className={`dot ${variant}`} style={{ left, bottom }} title={label}>
-      <span>{label}</span>
+      <span style={{ top: `${-22 - offsetIndex * 16}px` }}>{label}</span>
     </div>
   );
 }
 
 function MiniDot({ x, y, selected, label }) {
-  const left = `${((x - 1) / 4) * 100}%`;
-  const bottom = `${((y - 1) / 4) * 100}%`;
+  const left = `${coordToPercent(x)}%`;
+  const bottom = `${coordToPercent(y)}%`;
 
   return (
     <div
@@ -998,6 +1252,10 @@ function MiniDot({ x, y, selected, label }) {
       title={label}
     />
   );
+}
+
+function coordToPercent(value) {
+  return 10 + ((value - 1) / 4) * 80;
 }
 
 function formatMaybe(value) {
@@ -1014,7 +1272,12 @@ function getQuadrantLabel(avgImpact, avgEffort) {
   if (highImpact && !highEffort) return "Quick Win";
   if (highImpact && highEffort) return "Big Investment";
   if (!highImpact && !highEffort) return "Low-Stakes";
-  return "Probably Skip";
+  return "Save for Later";
+}
+
+function humanizeBoardType(type) {
+  const found = BOARD_TYPE_OPTIONS.find((option) => option.value === type);
+  return found?.label ?? "Custom";
 }
 
 const styles = `
@@ -1048,6 +1311,11 @@ const styles = `
     border-radius: 20px;
     padding: 16px;
     box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+  }
+
+  .selected-card {
+    border-color: #3e5f86;
+    box-shadow: 0 10px 28px rgba(0,0,0,0.22);
   }
 
   .auth-card {
@@ -1137,6 +1405,11 @@ const styles = `
     gap: 12px;
   }
 
+  .header-actions {
+    display: flex;
+    gap: 8px;
+  }
+
   .board-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1146,6 +1419,22 @@ const styles = `
   .board-option {
     min-height: 56px;
     text-align: left;
+  }
+
+  .board-list {
+    display: grid;
+    gap: 10px;
+  }
+
+  .board-list-item {
+    width: 100%;
+    text-align: left;
+    background: #0d1d31;
+  }
+
+  .board-list-title {
+    font-weight: 800;
+    margin-bottom: 4px;
   }
 
   .inline-form {
@@ -1190,7 +1479,7 @@ const styles = `
   }
 
   .selected-title {
-    font-size: 1.15rem;
+    font-size: 1.2rem;
     font-weight: 800;
   }
 
@@ -1252,12 +1541,12 @@ const styles = `
 
   .dot span {
     position: absolute;
-    top: -22px;
     left: 50%;
     transform: translateX(-50%);
     white-space: nowrap;
     font-size: 0.75rem;
     color: #d9e4f2;
+    pointer-events: none;
   }
 
   .dot.you {
@@ -1344,7 +1633,7 @@ const styles = `
   }
 
   .item-row.completed {
-    opacity: 0.6;
+    opacity: 0.7;
   }
 
   .error {
@@ -1366,7 +1655,8 @@ const styles = `
   @media (max-width: 640px) {
     .top-row,
     .selected-header,
-    .inline-form {
+    .inline-form,
+    .header-actions {
       display: grid;
     }
 
