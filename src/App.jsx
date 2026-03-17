@@ -57,6 +57,7 @@ export default function App() {
   const [selectedItemId, setSelectedItemId] = useState(null);
   const [showAllGridItems, setShowAllGridItems] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
+  const [showActiveItems, setShowActiveItems] = useState(false);
 
   const [itemTitle, setItemTitle] = useState("");
   const [itemError, setItemError] = useState("");
@@ -253,8 +254,13 @@ export default function App() {
   function hydrateItem(item) {
     const ratings = item.ratings ?? [];
 
-    const impactValues = ratings.map((r) => r.impact);
-    const effortValues = ratings.map((r) => r.effort);
+    const impactValues = ratings
+      .map((r) => r.impact)
+      .filter((value) => value !== null && value !== undefined);
+
+    const effortValues = ratings
+      .map((r) => r.effort)
+      .filter((value) => value !== null && value !== undefined);
 
     const avgImpact = impactValues.length
       ? impactValues.reduce((sum, value) => sum + value, 0) / impactValues.length
@@ -274,19 +280,28 @@ export default function App() {
     const partnerRating = partnerRatings[0] ?? null;
 
     const impactDiff =
-      currentUserRating && partnerRating
+      currentUserRating &&
+      partnerRating &&
+      currentUserRating.impact !== null &&
+      currentUserRating.impact !== undefined &&
+      partnerRating.impact !== null &&
+      partnerRating.impact !== undefined
         ? Math.abs(currentUserRating.impact - partnerRating.impact)
         : null;
 
     const effortDiff =
-      currentUserRating && partnerRating
+      currentUserRating &&
+      partnerRating &&
+      currentUserRating.effort !== null &&
+      currentUserRating.effort !== undefined &&
+      partnerRating.effort !== null &&
+      partnerRating.effort !== undefined
         ? Math.abs(currentUserRating.effort - partnerRating.effort)
         : null;
 
     const disagreementScore =
-      currentUserRating && partnerRating
-        ? Math.abs(currentUserRating.impact - partnerRating.impact) +
-          Math.abs(currentUserRating.effort - partnerRating.effort)
+      impactDiff !== null && effortDiff !== null
+        ? impactDiff + effortDiff
         : null;
 
     return {
@@ -302,9 +317,10 @@ export default function App() {
       alignmentLabel: getAlignmentLabel(currentUserRating, partnerRating, disagreementScore),
       quadrantLabel: getQuadrantLabel(avgImpact, avgEffort),
       needsDiscussion:
-        !currentUserRating ||
-        !partnerRating ||
+        !hasCompleteUserRating(currentUserRating) ||
+        !hasCompleteUserRating(partnerRating) ||
         (disagreementScore !== null && disagreementScore >= 2),
+      isCurrentUserUnrated: !hasCompleteUserRating(currentUserRating),
     };
   }
 
@@ -313,7 +329,9 @@ export default function App() {
       return a.is_completed ? 1 : -1;
     }
 
-    if (a.score === null && b.score === null) return 0;
+    if (a.score === null && b.score === null) {
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    }
     if (a.score === null) return 1;
     if (b.score === null) return -1;
 
@@ -532,8 +550,8 @@ export default function App() {
     const payload = {
       item_id: item.id,
       user_id: user.id,
-      impact: existing?.impact ?? 3,
-      effort: existing?.effort ?? 3,
+      impact: existing?.impact ?? null,
+      effort: existing?.effort ?? null,
       [field]: value,
     };
 
@@ -548,6 +566,22 @@ export default function App() {
     } catch (error) {
       console.error(error);
       setItemError(error.message || "Failed to save rating.");
+    }
+  }
+
+  function goToNextUnrated() {
+    if (!selectedItem) return;
+    if (!isFullyRatedByUser(selectedItem)) return;
+
+    const next = items.find(
+      (item) =>
+        !item.is_completed &&
+        item.id !== selectedItem.id &&
+        item.isCurrentUserUnrated
+    );
+
+    if (next) {
+      setSelectedItemId(next.id);
     }
   }
 
@@ -609,6 +643,10 @@ export default function App() {
   const activeItems = useMemo(() => items.filter((item) => !item.is_completed), [items]);
   const completedItems = useMemo(() => items.filter((item) => item.is_completed), [items]);
 
+  const unratedItems = useMemo(() => {
+    return activeItems.filter((item) => item.isCurrentUserUnrated);
+  }, [activeItems]);
+
   const gridItems = useMemo(() => {
     if (!showAllGridItems) return [];
     return activeItems.filter(
@@ -641,8 +679,8 @@ export default function App() {
     }
 
     return [...next].sort((a, b) => {
-      const aMissing = !a.currentUserRating || !a.partnerRating ? 1 : 0;
-      const bMissing = !b.currentUserRating || !b.partnerRating ? 1 : 0;
+      const aMissing = !hasCompleteUserRating(a.currentUserRating) || !hasCompleteUserRating(a.partnerRating) ? 1 : 0;
+      const bMissing = !hasCompleteUserRating(b.currentUserRating) || !hasCompleteUserRating(b.partnerRating) ? 1 : 0;
 
       if (aMissing !== bMissing) return bMissing - aMissing;
       return (b.disagreementScore ?? -1) - (a.disagreementScore ?? -1);
@@ -654,7 +692,13 @@ export default function App() {
 
     const rawDots = [];
 
-    if (selectedItem.currentUserRating) {
+    if (
+      selectedItem.currentUserRating &&
+      selectedItem.currentUserRating.effort !== null &&
+      selectedItem.currentUserRating.effort !== undefined &&
+      selectedItem.currentUserRating.impact !== null &&
+      selectedItem.currentUserRating.impact !== undefined
+    ) {
       rawDots.push({
         key: "you",
         label: "You",
@@ -664,7 +708,13 @@ export default function App() {
       });
     }
 
-    if (selectedItem.partnerRating) {
+    if (
+      selectedItem.partnerRating &&
+      selectedItem.partnerRating.effort !== null &&
+      selectedItem.partnerRating.effort !== undefined &&
+      selectedItem.partnerRating.impact !== null &&
+      selectedItem.partnerRating.impact !== undefined
+    ) {
       rawDots.push({
         key: "partner",
         label: "Partner",
@@ -1246,16 +1296,27 @@ export default function App() {
                     onSelect={(value) => saveRating(selectedItem, "effort", value)}
                   />
 
+                  <div className="next-action">
+                    <button
+                      type="button"
+                      className="primary"
+                      disabled={!isFullyRatedByUser(selectedItem)}
+                      onClick={goToNextUnrated}
+                    >
+                      Next Unrated Item
+                    </button>
+                  </div>
+
                   <div className="stack">
                     <div className="list-section-header">
-                      <h3>Active Items</h3>
+                      <h3>Unrated Items</h3>
                     </div>
 
-                    {activeItems.length === 0 ? (
-                      <p className="muted">No active items yet.</p>
+                    {unratedItems.length === 0 ? (
+                      <p className="muted">You have rated everything active on this board.</p>
                     ) : (
                       <div className="compact-item-list">
-                        {activeItems.map((item) => (
+                        {unratedItems.map((item) => (
                           <button
                             key={item.id}
                             type="button"
@@ -1268,6 +1329,39 @@ export default function App() {
                       </div>
                     )}
                   </div>
+                </div>
+              )}
+            </div>
+
+            <div className="card">
+              <div className="top-row">
+                <div>
+                  <h2>All Active Items</h2>
+                  <p className="muted">
+                    {activeItems.length} active item{activeItems.length === 1 ? "" : "s"}
+                  </p>
+                </div>
+                <button type="button" onClick={() => setShowActiveItems((prev) => !prev)}>
+                  {showActiveItems ? "Hide" : "Show"}
+                </button>
+              </div>
+
+              {!showActiveItems ? (
+                <p className="muted">Browse the full active list only when you need it.</p>
+              ) : activeItems.length === 0 ? (
+                <p className="muted">No active items yet.</p>
+              ) : (
+                <div className="compact-item-list">
+                  {activeItems.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={`compact-item-row ${selectedItemId === item.id ? "selected" : ""}`}
+                      onClick={() => setSelectedItemId(item.id)}
+                    >
+                      <span className="compact-item-name">{item.title}</span>
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
@@ -1431,6 +1525,27 @@ function formatMaybe(value) {
   return Number.isInteger(value) ? value : value.toFixed(1);
 }
 
+function hasCompleteUserRating(rating) {
+  return (
+    !!rating &&
+    rating.impact !== null &&
+    rating.impact !== undefined &&
+    rating.effort !== null &&
+    rating.effort !== undefined
+  );
+}
+
+function isFullyRatedByUser(item) {
+  const r = item?.currentUserRating;
+  return (
+    !!r &&
+    r.impact !== null &&
+    r.impact !== undefined &&
+    r.effort !== null &&
+    r.effort !== undefined
+  );
+}
+
 function getQuadrantLabel(avgImpact, avgEffort) {
   if (avgImpact === null || avgEffort === null) return "Unrated";
 
@@ -1444,7 +1559,9 @@ function getQuadrantLabel(avgImpact, avgEffort) {
 }
 
 function getAlignmentLabel(currentUserRating, partnerRating, disagreementScore) {
-  if (!currentUserRating || !partnerRating) return "Waiting on ratings";
+  if (!hasCompleteUserRating(currentUserRating) || !hasCompleteUserRating(partnerRating)) {
+    return "Waiting on ratings";
+  }
   if (disagreementScore === null) return "Waiting on ratings";
   if (disagreementScore <= 1) return "Low disagreement";
   if (disagreementScore <= 3) return "Mid disagreement";
@@ -1587,7 +1704,7 @@ const styles = `
   }
 
   button:disabled {
-    opacity: 0.7;
+    opacity: 0.55;
     cursor: default;
   }
 
@@ -1829,6 +1946,11 @@ const styles = `
   .rating-btn {
     min-width: 44px;
     min-height: 44px;
+  }
+
+  .next-action {
+    display: flex;
+    justify-content: flex-end;
   }
 
   .list-section-header {
