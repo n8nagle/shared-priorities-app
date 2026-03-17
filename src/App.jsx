@@ -15,6 +15,15 @@ const APP_TABS = {
   BOARDS: "boards",
 };
 
+const QUADRANT_FILTERS = [
+  { value: "all", label: "All Quadrants" },
+  { value: "Quick Win", label: "Quick Win" },
+  { value: "Big Investment", label: "Big Investment" },
+  { value: "Low-Stakes", label: "Low-Stakes" },
+  { value: "Save for Later", label: "Save for Later" },
+  { value: "Unrated", label: "Unrated" },
+];
+
 export default function App() {
   const [loading, setLoading] = useState(true);
 
@@ -72,6 +81,7 @@ export default function App() {
   const [appTab, setAppTab] = useState(APP_TABS.MAIN);
   const [topSearch, setTopSearch] = useState("");
   const [discussionSearch, setDiscussionSearch] = useState("");
+  const [topQuadrantFilter, setTopQuadrantFilter] = useState("all");
 
   useEffect(() => {
     let mounted = true;
@@ -304,6 +314,12 @@ export default function App() {
         ? impactDiff + effortDiff
         : null;
 
+    const alignmentLabel = getAlignmentLabel(
+      currentUserRating,
+      partnerRating,
+      disagreementScore
+    );
+
     return {
       ...item,
       avgImpact,
@@ -314,13 +330,15 @@ export default function App() {
       impactDiff,
       effortDiff,
       disagreementScore,
-      alignmentLabel: getAlignmentLabel(currentUserRating, partnerRating, disagreementScore),
+      alignmentLabel,
       quadrantLabel: getQuadrantLabel(avgImpact, avgEffort),
       needsDiscussion:
-        !hasCompleteUserRating(currentUserRating) ||
-        !hasCompleteUserRating(partnerRating) ||
-        (disagreementScore !== null && disagreementScore >= 2),
+        hasCompleteUserRating(currentUserRating) &&
+        hasCompleteUserRating(partnerRating) &&
+        (alignmentLabel === "Mid disagreement" || alignmentLabel === "High disagreement"),
       isCurrentUserUnrated: !hasCompleteUserRating(currentUserRating),
+      isFullyRankedByBoth:
+        hasCompleteUserRating(currentUserRating) && hasCompleteUserRating(partnerRating),
     };
   }
 
@@ -656,19 +674,31 @@ export default function App() {
 
   const topPriorityItems = useMemo(() => {
     const search = topSearch.trim().toLowerCase();
-    let next = activeItems.filter((item) => item.score !== null);
+
+    let next = activeItems;
 
     if (search) {
       next = next.filter((item) => item.title.toLowerCase().includes(search));
     }
 
+    if (topQuadrantFilter !== "all") {
+      next = next.filter((item) => item.quadrantLabel === topQuadrantFilter);
+    }
+
     return [...next].sort((a, b) => {
-      if (a.score === null && b.score === null) return 0;
+      if (a.isFullyRankedByBoth !== b.isFullyRankedByBoth) {
+        return a.isFullyRankedByBoth ? -1 : 1;
+      }
+
+      if (a.score === null && b.score === null) {
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      }
       if (a.score === null) return 1;
       if (b.score === null) return -1;
+
       return b.score - a.score;
     });
-  }, [activeItems, topSearch]);
+  }, [activeItems, topSearch, topQuadrantFilter]);
 
   const needsDiscussionItems = useMemo(() => {
     const search = discussionSearch.trim().toLowerCase();
@@ -679,13 +709,11 @@ export default function App() {
     }
 
     return [...next].sort((a, b) => {
-      const aMissing = !hasCompleteUserRating(a.currentUserRating) || !hasCompleteUserRating(a.partnerRating) ? 1 : 0;
-      const bMissing = !hasCompleteUserRating(b.currentUserRating) || !hasCompleteUserRating(b.partnerRating) ? 1 : 0;
-
-      if (aMissing !== bMissing) return bMissing - aMissing;
       return (b.disagreementScore ?? -1) - (a.disagreementScore ?? -1);
     });
   }, [activeItems, discussionSearch]);
+
+  const discussionCount = needsDiscussionItems.length;
 
   const selectedDots = useMemo(() => {
     if (!selectedItem) return [];
@@ -1081,24 +1109,35 @@ export default function App() {
                 Highest scoring items on {selectedBoard?.title || "this board"}.
               </p>
 
-              <input
-                className="top-gap"
-                value={topSearch}
-                onChange={(e) => setTopSearch(e.target.value)}
-                placeholder="Search priorities..."
-              />
+              <div className="filters-row top-gap">
+                <input
+                  value={topSearch}
+                  onChange={(e) => setTopSearch(e.target.value)}
+                  placeholder="Search priorities..."
+                />
+                <select
+                  value={topQuadrantFilter}
+                  onChange={(e) => setTopQuadrantFilter(e.target.value)}
+                >
+                  {QUADRANT_FILTERS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             <div className="card">
               {topPriorityItems.length === 0 ? (
-                <p className="muted">No scored items yet.</p>
+                <p className="muted">No items match this filter.</p>
               ) : (
                 <div className="detail-list">
                   {topPriorityItems.map((item, index) => (
                     <DetailRow
                       key={item.id}
                       item={item}
-                      rank={index + 1}
+                      rank={item.isFullyRankedByBoth ? index + 1 : null}
                       onOpen={() => handleJumpToItem(item.id)}
                       onToggleComplete={() => toggleComplete(item)}
                       openLabel="Open"
@@ -1115,7 +1154,7 @@ export default function App() {
             <div className="card">
               <div className="eyebrow">{household.name}</div>
               <h1>Needs Discussion</h1>
-              <p className="muted">Missing ratings and items with disagreement.</p>
+              <p className="muted">Only items with mid or high disagreement appear here.</p>
 
               <input
                 className="top-gap"
@@ -1127,7 +1166,7 @@ export default function App() {
 
             <div className="card">
               {needsDiscussionItems.length === 0 ? (
-                <p className="muted">Nothing obvious needs discussion right now.</p>
+                <p className="muted">No mid or high disagreement items right now.</p>
               ) : (
                 <div className="detail-list">
                   {needsDiscussionItems.map((item) => (
@@ -1401,7 +1440,7 @@ export default function App() {
         {authError && <div className="error">{authError}</div>}
       </div>
 
-      <BottomToolbar tab={appTab} onChange={setAppTab} />
+      <BottomToolbar tab={appTab} onChange={setAppTab} discussionCount={discussionCount} />
       <style>{styles}</style>
     </>
   );
@@ -1427,7 +1466,7 @@ function RatingRow({ label, value, onSelect }) {
   );
 }
 
-function BottomToolbar({ tab, onChange }) {
+function BottomToolbar({ tab, onChange, discussionCount }) {
   return (
     <div className="bottom-toolbar">
       <button
@@ -1446,10 +1485,11 @@ function BottomToolbar({ tab, onChange }) {
       </button>
       <button
         type="button"
-        className={tab === APP_TABS.DISCUSSION ? "active" : ""}
+        className={`toolbar-badge-btn ${tab === APP_TABS.DISCUSSION ? "active" : ""}`}
         onClick={() => onChange(APP_TABS.DISCUSSION)}
       >
-        Needs Discussion
+        <span>Needs Discussion</span>
+        {discussionCount > 0 ? <span className="notif-badge">{discussionCount}</span> : null}
       </button>
       <button
         type="button"
@@ -1607,7 +1647,8 @@ const styles = `
   }
 
   button,
-  input {
+  input,
+  select {
     font: inherit;
   }
 
@@ -1678,7 +1719,8 @@ const styles = `
     margin-bottom: 8px;
   }
 
-  input {
+  input,
+  select {
     width: 100%;
     padding: 12px 14px;
     border-radius: 12px;
@@ -1736,6 +1778,12 @@ const styles = `
   .header-actions {
     display: flex;
     gap: 8px;
+  }
+
+  .filters-row {
+    display: grid;
+    grid-template-columns: 1fr 220px;
+    gap: 10px;
   }
 
   .board-grid {
@@ -2120,6 +2168,30 @@ const styles = `
     background: #13273f;
   }
 
+  .toolbar-badge-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .notif-badge {
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: #e53935;
+    color: white;
+    font-size: 0.72rem;
+    font-weight: 800;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    box-shadow: 0 0 0 2px rgba(10, 19, 31, 0.96);
+  }
+
   .error {
     background: rgba(255, 95, 95, 0.16);
     color: #ffd4d4;
@@ -2141,7 +2213,8 @@ const styles = `
     .selected-header,
     .inline-form,
     .header-actions,
-    .detail-row {
+    .detail-row,
+    .filters-row {
       display: grid;
     }
 
@@ -2166,6 +2239,17 @@ const styles = `
     .bottom-toolbar button {
       font-size: 0.8rem;
       padding: 8px 6px;
+    }
+
+    .toolbar-badge-btn {
+      gap: 4px;
+    }
+
+    .notif-badge {
+      min-width: 18px;
+      height: 18px;
+      font-size: 0.68rem;
+      padding: 0 5px;
     }
   }
 `;
