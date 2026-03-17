@@ -62,6 +62,10 @@ export default function App() {
   const [inviteError, setInviteError] = useState("");
   const [inviteLoading, setInviteLoading] = useState(false);
 
+  const [itemSearch, setItemSearch] = useState("");
+  const [itemSort, setItemSort] = useState("score_desc");
+  const [itemViewMode, setItemViewMode] = useState("detailed");
+
   useEffect(() => {
     let mounted = true;
 
@@ -275,6 +279,17 @@ export default function App() {
         ? Math.abs(currentUserRating.effort - partnerRating.effort)
         : null;
 
+    const disagreementScore =
+      currentUserRating && partnerRating
+        ? Math.abs(currentUserRating.impact - partnerRating.impact) +
+          Math.abs(currentUserRating.effort - partnerRating.effort)
+        : 0;
+
+    const needsDiscussion =
+      !currentUserRating ||
+      !partnerRating ||
+      disagreementScore >= 3;
+
     return {
       ...item,
       avgImpact,
@@ -284,6 +299,8 @@ export default function App() {
       partnerRating,
       impactDiff,
       effortDiff,
+      disagreementScore,
+      needsDiscussion,
       quadrantLabel: getQuadrantLabel(avgImpact, avgEffort),
     };
   }
@@ -595,6 +612,46 @@ export default function App() {
       (item) => item.avgImpact !== null && item.avgEffort !== null
     );
   }, [activeItems, showAllGridItems]);
+
+  const filteredActiveItems = useMemo(() => {
+    const search = itemSearch.trim().toLowerCase();
+    let next = activeItems;
+
+    if (search) {
+      next = next.filter((item) => item.title.toLowerCase().includes(search));
+    }
+
+    return [...next].sort((a, b) => compareItems(a, b, itemSort));
+  }, [activeItems, itemSearch, itemSort]);
+
+  const filteredCompletedItems = useMemo(() => {
+    const search = itemSearch.trim().toLowerCase();
+    let next = completedItems;
+
+    if (search) {
+      next = next.filter((item) => item.title.toLowerCase().includes(search));
+    }
+
+    return [...next].sort((a, b) => compareItems(a, b, itemSort));
+  }, [completedItems, itemSearch, itemSort]);
+
+  const topPriorityItems = useMemo(() => {
+    return filteredActiveItems
+      .filter((item) => item.score !== null)
+      .slice(0, 5);
+  }, [filteredActiveItems]);
+
+  const needsDiscussionItems = useMemo(() => {
+    return filteredActiveItems
+      .filter((item) => item.needsDiscussion)
+      .sort((a, b) => {
+        const aMissing = !a.currentUserRating || !a.partnerRating ? 1 : 0;
+        const bMissing = !b.currentUserRating || !b.partnerRating ? 1 : 0;
+
+        if (aMissing !== bMissing) return bMissing - aMissing;
+        return (b.disagreementScore ?? 0) - (a.disagreementScore ?? 0);
+      });
+  }, [filteredActiveItems]);
 
   const selectedDots = useMemo(() => {
     if (!selectedItem) return [];
@@ -1102,6 +1159,14 @@ export default function App() {
                     {formatMaybe(selectedItem.currentUserRating?.effort)}
                   </div>
                   <div>
+                    <strong>Partner Impact:</strong>{" "}
+                    {formatMaybe(selectedItem.partnerRating?.impact)}
+                  </div>
+                  <div>
+                    <strong>Partner Effort:</strong>{" "}
+                    {formatMaybe(selectedItem.partnerRating?.effort)}
+                  </div>
+                  <div>
                     <strong>Avg Impact:</strong>{" "}
                     {formatMaybe(selectedItem.avgImpact)}
                   </div>
@@ -1136,29 +1201,125 @@ export default function App() {
         </div>
 
         <div className="card">
-          <h2>Active Items</h2>
+          <div className="top-row">
+            <div>
+              <h2>Decision Workspace</h2>
+              <p className="muted">
+                Cleaner view of what to do first, what needs discussion, and what is done.
+              </p>
+            </div>
+          </div>
 
-          {activeItems.length === 0 ? (
-            <p className="muted">No active items yet.</p>
+          <div className="workspace-controls">
+            <input
+              value={itemSearch}
+              onChange={(e) => setItemSearch(e.target.value)}
+              placeholder="Search items..."
+            />
+
+            <select value={itemSort} onChange={(e) => setItemSort(e.target.value)}>
+              <option value="score_desc">Sort: Highest Score</option>
+              <option value="score_asc">Sort: Lowest Score</option>
+              <option value="impact_desc">Sort: Highest Impact</option>
+              <option value="effort_asc">Sort: Lowest Effort</option>
+              <option value="title_asc">Sort: A to Z</option>
+              <option value="newest">Sort: Newest</option>
+              <option value="oldest">Sort: Oldest</option>
+              <option value="discussion_desc">Sort: Most Disagreement</option>
+            </select>
+
+            <div className="segmented-toggle">
+              <button
+                type="button"
+                className={itemViewMode === "detailed" ? "active" : ""}
+                onClick={() => setItemViewMode("detailed")}
+              >
+                Detailed
+              </button>
+              <button
+                type="button"
+                className={itemViewMode === "compact" ? "active" : ""}
+                onClick={() => setItemViewMode("compact")}
+              >
+                Compact
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="card">
+          <SectionHeader
+            title="Top Priorities"
+            subtitle="Highest scoring active items."
+            count={topPriorityItems.length}
+          />
+
+          {topPriorityItems.length === 0 ? (
+            <p className="muted">No scored active items yet.</p>
           ) : (
-            <div className="item-list">
-              {activeItems.map((item, index) => (
-                <button
+            <div className="clean-list">
+              {topPriorityItems.map((item, index) => (
+                <ItemCard
                   key={item.id}
-                  type="button"
-                  className={`item-row ${selectedItemId === item.id ? "selected" : ""}`}
-                  onClick={() => setSelectedItemId(item.id)}
-                >
-                  <div className="item-rank">{index + 1}</div>
-                  <div className="item-main">
-                    <div className="item-title">{item.title}</div>
-                    <div className="item-sub muted">
-                      {item.score === null
-                        ? "Needs rating"
-                        : `Score ${item.score.toFixed(1)} • ${item.quadrantLabel}`}
-                    </div>
-                  </div>
-                </button>
+                  item={item}
+                  index={index}
+                  selected={selectedItemId === item.id}
+                  compact={itemViewMode === "compact"}
+                  onSelect={() => setSelectedItemId(item.id)}
+                  onToggleComplete={() => toggleComplete(item)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="card">
+          <SectionHeader
+            title="Needs Discussion"
+            subtitle="Missing ratings or major differences between people."
+            count={needsDiscussionItems.length}
+          />
+
+          {needsDiscussionItems.length === 0 ? (
+            <p className="muted">Nothing obvious to discuss right now.</p>
+          ) : (
+            <div className="clean-list">
+              {needsDiscussionItems.map((item) => (
+                <ItemCard
+                  key={item.id}
+                  item={item}
+                  selected={selectedItemId === item.id}
+                  compact={itemViewMode === "compact"}
+                  onSelect={() => setSelectedItemId(item.id)}
+                  onToggleComplete={() => toggleComplete(item)}
+                  highlight="discussion"
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="card">
+          <SectionHeader
+            title="All Active Items"
+            subtitle="Everything still in play."
+            count={filteredActiveItems.length}
+          />
+
+          {filteredActiveItems.length === 0 ? (
+            <p className="muted">No active items match your search.</p>
+          ) : (
+            <div className="clean-list">
+              {filteredActiveItems.map((item, index) => (
+                <ItemCard
+                  key={item.id}
+                  item={item}
+                  index={index}
+                  selected={selectedItemId === item.id}
+                  compact={itemViewMode === "compact"}
+                  onSelect={() => setSelectedItemId(item.id)}
+                  onToggleComplete={() => toggleComplete(item)}
+                />
               ))}
             </div>
           )}
@@ -1166,37 +1327,34 @@ export default function App() {
 
         <div className="card">
           <div className="top-row">
-            <h2>Completed</h2>
+            <div>
+              <h2>Completed</h2>
+              <p className="muted">
+                {filteredCompletedItems.length} completed item
+                {filteredCompletedItems.length === 1 ? "" : "s"}
+              </p>
+            </div>
             <button type="button" onClick={() => setShowCompleted((prev) => !prev)}>
               {showCompleted ? "Hide" : "Show"}
             </button>
           </div>
 
           {!showCompleted ? (
-            <p className="muted">
-              {completedItems.length} completed item{completedItems.length === 1 ? "" : "s"}
-            </p>
-          ) : completedItems.length === 0 ? (
+            <p className="muted">Completed items are tucked away.</p>
+          ) : filteredCompletedItems.length === 0 ? (
             <p className="muted">No completed items.</p>
           ) : (
-            <div className="item-list">
-              {completedItems.map((item) => (
-                <button
+            <div className="clean-list">
+              {filteredCompletedItems.map((item) => (
+                <ItemCard
                   key={item.id}
-                  type="button"
-                  className={`item-row completed ${selectedItemId === item.id ? "selected" : ""}`}
-                  onClick={() => setSelectedItemId(item.id)}
-                >
-                  <div className="item-rank">✓</div>
-                  <div className="item-main">
-                    <div className="item-title">{item.title}</div>
-                    <div className="item-sub muted">
-                      {item.score === null
-                        ? "Completed"
-                        : `Completed • Score ${item.score.toFixed(1)}`}
-                    </div>
-                  </div>
-                </button>
+                  item={item}
+                  selected={selectedItemId === item.id}
+                  compact={itemViewMode === "compact"}
+                  onSelect={() => setSelectedItemId(item.id)}
+                  onToggleComplete={() => toggleComplete(item)}
+                  completed
+                />
               ))}
             </div>
           )}
@@ -1227,6 +1385,132 @@ function RatingRow({ label, value, onSelect }) {
         ))}
       </div>
     </div>
+  );
+}
+
+function SectionHeader({ title, subtitle, count }) {
+  return (
+    <div className="section-header">
+      <div>
+        <h2>{title}</h2>
+        <p className="muted">{subtitle}</p>
+      </div>
+      <div className="count-pill">{count}</div>
+    </div>
+  );
+}
+
+function ItemCard({
+  item,
+  index,
+  selected,
+  compact,
+  onSelect,
+  onToggleComplete,
+  highlight,
+  completed = false,
+}) {
+  const badgeClass = badgeClassFromQuadrant(item.quadrantLabel);
+
+  const discussionLabel = !item.currentUserRating || !item.partnerRating
+    ? "Needs Ratings"
+    : item.disagreementScore >= 3
+    ? `Disagreement ${item.disagreementScore}`
+    : null;
+
+  return (
+    <button
+      type="button"
+      className={[
+        "item-card",
+        selected ? "selected" : "",
+        compact ? "compact" : "",
+        completed ? "completed" : "",
+        highlight === "discussion" ? "discussion" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      onClick={onSelect}
+    >
+      <div className="item-card-top">
+        <div className="item-card-main">
+          <div className="item-card-title-row">
+            {typeof index === "number" && !completed && (
+              <div className="item-rank-badge">{index + 1}</div>
+            )}
+            <div className="item-card-title">{item.title}</div>
+          </div>
+
+          <div className="item-badges">
+            <span className={`pill ${badgeClass}`}>
+              {item.quadrantLabel}
+            </span>
+
+            {discussionLabel && (
+              <span className="pill pill-discussion">{discussionLabel}</span>
+            )}
+
+            {completed && <span className="pill pill-completed">Completed</span>}
+          </div>
+        </div>
+
+        <div className="item-card-actions">
+          <button
+            type="button"
+            className="small-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleComplete();
+            }}
+          >
+            {completed ? "Mark Active" : "Complete"}
+          </button>
+        </div>
+      </div>
+
+      <div className="score-strip">
+        <div className="score-chip">
+          <span>Score</span>
+          <strong>{formatMaybe(item.score)}</strong>
+        </div>
+        <div className="score-chip">
+          <span>Avg Impact</span>
+          <strong>{formatMaybe(item.avgImpact)}</strong>
+        </div>
+        <div className="score-chip">
+          <span>Avg Effort</span>
+          <strong>{formatMaybe(item.avgEffort)}</strong>
+        </div>
+      </div>
+
+      {!compact && (
+        <div className="ratings-grid">
+          <div className="rating-person-card">
+            <div className="rating-person-label">You</div>
+            <div className="rating-person-values">
+              <span>Impact {formatMaybe(item.currentUserRating?.impact)}</span>
+              <span>Effort {formatMaybe(item.currentUserRating?.effort)}</span>
+            </div>
+          </div>
+
+          <div className="rating-person-card">
+            <div className="rating-person-label">Partner</div>
+            <div className="rating-person-values">
+              <span>Impact {formatMaybe(item.partnerRating?.impact)}</span>
+              <span>Effort {formatMaybe(item.partnerRating?.effort)}</span>
+            </div>
+          </div>
+
+          <div className="rating-person-card">
+            <div className="rating-person-label">Difference</div>
+            <div className="rating-person-values">
+              <span>Impact {formatMaybe(item.impactDiff)}</span>
+              <span>Effort {formatMaybe(item.effortDiff)}</span>
+            </div>
+          </div>
+        </div>
+      )}
+    </button>
   );
 }
 
@@ -1280,6 +1564,50 @@ function humanizeBoardType(type) {
   return found?.label ?? "Custom";
 }
 
+function compareItems(a, b, sortKey) {
+  switch (sortKey) {
+    case "score_asc":
+      return compareNullableNumber(a.score, b.score, true);
+    case "impact_desc":
+      return compareNullableNumber(a.avgImpact, b.avgImpact, false);
+    case "effort_asc":
+      return compareNullableNumber(a.avgEffort, b.avgEffort, true);
+    case "title_asc":
+      return a.title.localeCompare(b.title);
+    case "newest":
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    case "oldest":
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    case "discussion_desc":
+      return (b.disagreementScore ?? 0) - (a.disagreementScore ?? 0);
+    case "score_desc":
+    default:
+      return compareNullableNumber(a.score, b.score, false);
+  }
+}
+
+function compareNullableNumber(a, b, ascending = false) {
+  if (a === null && b === null) return 0;
+  if (a === null) return 1;
+  if (b === null) return -1;
+  return ascending ? a - b : b - a;
+}
+
+function badgeClassFromQuadrant(quadrant) {
+  switch (quadrant) {
+    case "Quick Win":
+      return "pill-quick-win";
+    case "Big Investment":
+      return "pill-big-investment";
+    case "Low-Stakes":
+      return "pill-low-stakes";
+    case "Save for Later":
+      return "pill-save-for-later";
+    default:
+      return "pill-unrated";
+  }
+}
+
 const styles = `
   * {
     box-sizing: border-box;
@@ -1293,7 +1621,8 @@ const styles = `
   }
 
   button,
-  input {
+  input,
+  select {
     font: inherit;
   }
 
@@ -1326,6 +1655,10 @@ const styles = `
     margin-top: 0;
   }
 
+  h2 {
+    margin-bottom: 6px;
+  }
+
   .muted {
     color: #9cb1ca;
   }
@@ -1352,7 +1685,8 @@ const styles = `
     margin-bottom: 8px;
   }
 
-  input {
+  input,
+  select {
     width: 100%;
     padding: 12px 14px;
     border-radius: 12px;
@@ -1391,7 +1725,7 @@ const styles = `
   .auth-toggle button.active,
   .board-option.active,
   .rating-btn.active,
-  .item-row.selected {
+  .segmented-toggle button.active {
     background: #f0a329;
     color: #102235;
     border-color: transparent;
@@ -1602,38 +1936,239 @@ const styles = `
     min-height: 44px;
   }
 
-  .item-list {
+  .workspace-controls {
     display: grid;
+    grid-template-columns: 1.4fr 1fr auto;
     gap: 10px;
+    align-items: center;
   }
 
-  .item-row {
+  .segmented-toggle {
+    display: flex;
+    gap: 8px;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .count-pill {
+    min-width: 36px;
+    height: 36px;
+    padding: 0 12px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    background: #0d1d31;
+    border: 1px solid #335070;
+    color: #d9e4f2;
+  }
+
+  .clean-list {
+    display: grid;
+    gap: 12px;
+  }
+
+  .item-card {
     width: 100%;
     text-align: left;
     display: grid;
-    grid-template-columns: 48px 1fr;
     gap: 12px;
-    align-items: center;
     background: #0d1d31;
+    border: 1px solid #28415d;
+    border-radius: 16px;
+    padding: 14px;
+    transition: border-color 0.15s ease, transform 0.15s ease;
   }
 
-  .item-rank {
-    font-size: 1.2rem;
+  .item-card:hover {
+    border-color: #416587;
+  }
+
+  .item-card.selected {
+    border-color: #f0a329;
+    box-shadow: inset 0 0 0 1px rgba(240,163,41,0.35);
+  }
+
+  .item-card.completed {
+    opacity: 0.8;
+  }
+
+  .item-card.discussion {
+    border-color: #7c5a24;
+  }
+
+  .item-card.compact {
+    gap: 10px;
+  }
+
+  .item-card-top {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  .item-card-main {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .item-card-title-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .item-card-title {
     font-weight: 800;
-    text-align: center;
+    font-size: 1rem;
+    line-height: 1.3;
+    word-break: break-word;
   }
 
-  .item-title {
+  .item-card-actions {
+    display: flex;
+    align-items: flex-start;
+  }
+
+  .small-btn {
+    padding: 8px 10px;
+    font-size: 0.9rem;
+  }
+
+  .item-rank-badge {
+    min-width: 32px;
+    height: 32px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #18304c;
+    border: 1px solid #335070;
+    font-weight: 800;
+    color: #d9e4f2;
+    flex-shrink: 0;
+  }
+
+  .item-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 28px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    border: 1px solid transparent;
+  }
+
+  .pill-quick-win {
+    background: rgba(72, 187, 120, 0.18);
+    color: #b6f5ca;
+    border-color: rgba(72, 187, 120, 0.35);
+  }
+
+  .pill-big-investment {
+    background: rgba(240, 163, 41, 0.18);
+    color: #ffd79b;
+    border-color: rgba(240, 163, 41, 0.35);
+  }
+
+  .pill-low-stakes {
+    background: rgba(78, 161, 255, 0.16);
+    color: #bfddff;
+    border-color: rgba(78, 161, 255, 0.35);
+  }
+
+  .pill-save-for-later {
+    background: rgba(156, 177, 202, 0.16);
+    color: #d5e1ef;
+    border-color: rgba(156, 177, 202, 0.3);
+  }
+
+  .pill-unrated {
+    background: rgba(255, 255, 255, 0.08);
+    color: #d9e4f2;
+    border-color: rgba(255,255,255,0.16);
+  }
+
+  .pill-discussion {
+    background: rgba(255, 95, 95, 0.16);
+    color: #ffd6d6;
+    border-color: rgba(255, 95, 95, 0.32);
+  }
+
+  .pill-completed {
+    background: rgba(72, 187, 120, 0.16);
+    color: #d7ffe5;
+    border-color: rgba(72, 187, 120, 0.3);
+  }
+
+  .score-strip {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .score-chip {
+    background: #11243b;
+    border: 1px solid #26415f;
+    border-radius: 14px;
+    padding: 10px 12px;
+    display: grid;
+    gap: 4px;
+  }
+
+  .score-chip span {
+    font-size: 0.78rem;
+    color: #9cb1ca;
+  }
+
+  .score-chip strong {
+    font-size: 1rem;
+  }
+
+  .ratings-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .rating-person-card {
+    background: #11243b;
+    border: 1px solid #26415f;
+    border-radius: 14px;
+    padding: 10px 12px;
+    display: grid;
+    gap: 6px;
+  }
+
+  .rating-person-label {
+    font-size: 0.78rem;
+    color: #9cb1ca;
     font-weight: 700;
   }
 
-  .item-sub {
-    font-size: 0.9rem;
-    margin-top: 4px;
-  }
-
-  .item-row.completed {
-    opacity: 0.7;
+  .rating-person-values {
+    display: grid;
+    gap: 4px;
+    font-size: 0.92rem;
   }
 
   .error {
@@ -1656,7 +2191,9 @@ const styles = `
     .top-row,
     .selected-header,
     .inline-form,
-    .header-actions {
+    .header-actions,
+    .item-card-top,
+    .section-header {
       display: grid;
     }
 
@@ -1669,8 +2206,20 @@ const styles = `
       grid-template-columns: 1fr 1fr;
     }
 
-    .focus-meta {
+    .focus-meta,
+    .ratings-grid,
+    .score-strip,
+    .workspace-controls {
       grid-template-columns: 1fr;
+    }
+
+    .segmented-toggle {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .item-card-actions {
+      justify-content: flex-start;
     }
   }
 `;
