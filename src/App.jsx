@@ -36,7 +36,6 @@ export default function App() {
 
   const [boards, setBoards] = useState([]);
   const [selectedBoardId, setSelectedBoardId] = useState(null);
-  const [showBoardHub, setShowBoardHub] = useState(false);
 
   const [setupMode, setSetupMode] = useState("create");
   const [setupForm, setSetupForm] = useState({
@@ -69,9 +68,9 @@ export default function App() {
   const [inviteError, setInviteError] = useState("");
   const [inviteLoading, setInviteLoading] = useState(false);
 
+  const [appTab, setAppTab] = useState(APP_TABS.MAIN);
   const [topSearch, setTopSearch] = useState("");
   const [discussionSearch, setDiscussionSearch] = useState("");
-  const [appTab, setAppTab] = useState(APP_TABS.MAIN);
 
   useEffect(() => {
     let mounted = true;
@@ -112,7 +111,6 @@ export default function App() {
       setSelectedBoardId(null);
       setItems([]);
       setSelectedItemId(null);
-      setShowBoardHub(false);
       return;
     }
 
@@ -128,12 +126,6 @@ export default function App() {
 
     loadBoardItems(selectedBoardId);
   }, [selectedBoardId]);
-
-  useEffect(() => {
-    if (showBoardHub) {
-      setAppTab(APP_TABS.BOARDS);
-    }
-  }, [showBoardHub]);
 
   async function loadAppState() {
     setLoading(true);
@@ -182,7 +174,6 @@ export default function App() {
         setSelectedBoardId(null);
         setItems([]);
         setSelectedItemId(null);
-        setShowBoardHub(false);
         setLoading(false);
         return;
       }
@@ -217,7 +208,7 @@ export default function App() {
     });
 
     if (nextBoards.length === 0) {
-      setShowBoardHub(true);
+      setAppTab(APP_TABS.BOARDS);
     }
   }
 
@@ -298,17 +289,6 @@ export default function App() {
           Math.abs(currentUserRating.effort - partnerRating.effort)
         : null;
 
-    const alignmentLabel = getAlignmentLabel(
-      currentUserRating,
-      partnerRating,
-      disagreementScore
-    );
-
-    const needsDiscussion =
-      !currentUserRating ||
-      !partnerRating ||
-      (disagreementScore !== null && disagreementScore >= 2);
-
     return {
       ...item,
       avgImpact,
@@ -319,9 +299,12 @@ export default function App() {
       impactDiff,
       effortDiff,
       disagreementScore,
-      alignmentLabel,
-      needsDiscussion,
+      alignmentLabel: getAlignmentLabel(currentUserRating, partnerRating, disagreementScore),
       quadrantLabel: getQuadrantLabel(avgImpact, avgEffort),
+      needsDiscussion:
+        !currentUserRating ||
+        !partnerRating ||
+        (disagreementScore !== null && disagreementScore >= 2),
     };
   }
 
@@ -330,9 +313,7 @@ export default function App() {
       return a.is_completed ? 1 : -1;
     }
 
-    if (a.score === null && b.score === null) {
-      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-    }
+    if (a.score === null && b.score === null) return 0;
     if (a.score === null) return 1;
     if (b.score === null) return -1;
 
@@ -460,7 +441,6 @@ export default function App() {
 
       await loadAppState();
       setSelectedBoardId(boardInsert.id);
-      setShowBoardHub(false);
       setAppTab(APP_TABS.MAIN);
     } catch (error) {
       console.error(error);
@@ -501,7 +481,6 @@ export default function App() {
         title: "",
         boardType: "custom",
       });
-      setShowBoardHub(false);
       setAppTab(APP_TABS.MAIN);
     } catch (error) {
       console.error(error);
@@ -639,7 +618,6 @@ export default function App() {
 
   const topPriorityItems = useMemo(() => {
     const search = topSearch.trim().toLowerCase();
-
     let next = activeItems.filter((item) => item.score !== null);
 
     if (search) {
@@ -656,7 +634,6 @@ export default function App() {
 
   const needsDiscussionItems = useMemo(() => {
     const search = discussionSearch.trim().toLowerCase();
-
     let next = activeItems.filter((item) => item.needsDiscussion);
 
     if (search) {
@@ -715,6 +692,16 @@ export default function App() {
       return { ...dot, offsetIndex };
     });
   }, [selectedItem]);
+
+  function handleOpenBoard(boardId) {
+    setSelectedBoardId(boardId);
+    setAppTab(APP_TABS.MAIN);
+  }
+
+  function handleJumpToItem(itemId) {
+    setSelectedItemId(itemId);
+    setAppTab(APP_TABS.MAIN);
+  }
 
   if (loading) {
     return (
@@ -937,277 +924,375 @@ export default function App() {
     );
   }
 
-  function openBoard(boardId) {
-    setSelectedBoardId(boardId);
-    setShowBoardHub(false);
-    setAppTab(APP_TABS.MAIN);
-  }
+  const renderBoardsTab = appTab === APP_TABS.BOARDS;
+  const renderTopTab = appTab === APP_TABS.TOP;
+  const renderDiscussionTab = appTab === APP_TABS.DISCUSSION;
+  const renderMainTab =
+    appTab === APP_TABS.MAIN || (!selectedBoard && appTab !== APP_TABS.BOARDS);
 
-  function jumpToItem(itemId) {
-    setSelectedItemId(itemId);
-    setAppTab(APP_TABS.MAIN);
-  }
-
-  const renderBoardsTab = () => (
+  return (
     <>
-      <div className="card">
-        <div className="top-row">
-          <div>
-            <div className="eyebrow">{household.name}</div>
-            <h1>Boards</h1>
-            <p className="muted">Choose a board or create a new one.</p>
-          </div>
-          <button type="button" onClick={handleSignOut}>
-            Sign Out
-          </button>
-        </div>
-      </div>
-
-      <div className="card">
-        <h2>Your Boards</h2>
-
-        {boards.length === 0 ? (
-          <p className="muted">No boards yet.</p>
-        ) : (
-          <div className="board-list">
-            {boards.map((board) => (
-              <button
-                key={board.id}
-                type="button"
-                className={`board-list-item ${selectedBoardId === board.id ? "selected" : ""}`}
-                onClick={() => openBoard(board.id)}
-              >
-                <div className="board-list-title">{board.title}</div>
-                <div className="muted">{humanizeBoardType(board.board_type)}</div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="card">
-        <h2>Create Board</h2>
-        <form onSubmit={handleCreateBoard} className="stack">
-          <label>
-            Board Title
-            <input
-              value={createBoardForm.title}
-              onChange={(e) =>
-                setCreateBoardForm((prev) => ({
-                  ...prev,
-                  title: e.target.value,
-                }))
-              }
-              placeholder="Bathroom Remodel"
-            />
-          </label>
-
-          <div>
-            <div className="field-label">Board Type</div>
-            <div className="board-grid">
-              {BOARD_TYPE_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  className={
-                    createBoardForm.boardType === option.value
-                      ? "board-option active"
-                      : "board-option"
-                  }
-                  onClick={() =>
-                    setCreateBoardForm((prev) => ({
-                      ...prev,
-                      boardType: option.value,
-                    }))
-                  }
-                >
-                  {option.label}
+      <div className="app-shell app-shell-with-toolbar">
+        {renderBoardsTab ? (
+          <>
+            <div className="card">
+              <div className="top-row">
+                <div>
+                  <div className="eyebrow">{household.name}</div>
+                  <h1>Boards</h1>
+                  <p className="muted">Choose a board or create a new one.</p>
+                </div>
+                <button type="button" onClick={handleSignOut}>
+                  Sign Out
                 </button>
-              ))}
-            </div>
-          </div>
-
-          {createBoardError && <div className="error">{createBoardError}</div>}
-
-          <button type="submit" className="primary" disabled={createBoardLoading}>
-            {createBoardLoading ? "Creating..." : "Create Board"}
-          </button>
-        </form>
-      </div>
-    </>
-  );
-
-  const renderMainTab = () => (
-    <>
-      <div className="card">
-        <div className="top-row">
-          <div>
-            <div className="eyebrow">{household.name}</div>
-            <h1>{selectedBoard?.title || "Board"}</h1>
-            <p className="muted">
-              Logged in as {profile?.display_name || user.email}
-            </p>
-          </div>
-
-          <div className="header-actions">
-            <button
-              type="button"
-              onClick={() => {
-                setShowBoardHub(true);
-                setAppTab(APP_TABS.BOARDS);
-              }}
-            >
-              Boards
-            </button>
-            <button type="button" onClick={handleSignOut}>
-              Sign Out
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="card">
-        <div className="top-row">
-          <div>
-            <h2>Invite Partner</h2>
-            <p className="muted">
-              Share a one-time code so your partner can join this household.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={generateInviteCode}
-            disabled={inviteLoading}
-          >
-            {inviteLoading ? "Generating..." : "Generate Code"}
-          </button>
-        </div>
-
-        {inviteCode && (
-          <div className="invite-code-box">
-            <div className="invite-code-label">Invite Code</div>
-            <div className="invite-code">{inviteCode}</div>
-          </div>
-        )}
-
-        {inviteError && <div className="error top-gap">{inviteError}</div>}
-        {inviteMessage && <div className="success top-gap">{inviteMessage}</div>}
-      </div>
-
-      <div className="card">
-        <h2>Add Item</h2>
-        <form onSubmit={handleAddItem} className="inline-form">
-          <input
-            value={itemTitle}
-            onChange={(e) => setItemTitle(e.target.value)}
-            placeholder="Add a new item..."
-          />
-          <button type="submit" className="primary" disabled={addingItem}>
-            {addingItem ? "Adding..." : "Add"}
-          </button>
-        </form>
-
-        {itemError && <div className="error top-gap">{itemError}</div>}
-        {itemMessage && <div className="success top-gap">{itemMessage}</div>}
-      </div>
-
-      <div className="card selected-card">
-        <div className="top-row">
-          <h2>Focused Grid</h2>
-          <button
-            type="button"
-            onClick={() => setShowAllGridItems((prev) => !prev)}
-          >
-            {showAllGridItems ? "Show Selected Only" : "Show All Items"}
-          </button>
-        </div>
-
-        {!selectedItem ? (
-          <p className="muted">Add your first item to get started.</p>
-        ) : (
-          <div className="stack">
-            <div className="selected-header">
-              <div>
-                <div className="selected-title">{selectedItem.title}</div>
-                <div className="muted">
-                  {selectedItem.score === null
-                    ? "Needs rating"
-                    : `Score ${selectedItem.score.toFixed(1)}`}
-                </div>
-              </div>
-
-              <button type="button" onClick={() => toggleComplete(selectedItem)}>
-                {selectedItem.is_completed ? "Mark Active" : "Mark Complete"}
-              </button>
-            </div>
-
-            <div className="focus-grid">
-              <div className="focus-box">
-                <div className="quadrant top-left">Quick Win</div>
-                <div className="quadrant top-right">Big Investment</div>
-                <div className="quadrant bottom-left">Low-Stakes</div>
-                <div className="quadrant bottom-right">Save for Later</div>
-
-                {gridItems.map((item) => (
-                  <MiniDot
-                    key={item.id}
-                    x={item.avgEffort}
-                    y={item.avgImpact}
-                    selected={item.id === selectedItem.id}
-                    label={item.title}
-                  />
-                ))}
-
-                {selectedDots.map((dot) => (
-                  <Dot
-                    key={dot.key}
-                    label={dot.label}
-                    x={dot.x}
-                    y={dot.y}
-                    variant={dot.variant}
-                    offsetIndex={dot.offsetIndex}
-                  />
-                ))}
-              </div>
-
-              <div className="focus-summary">
-                <div className="summary-pill">
-                  <span>Quadrant</span>
-                  <strong>{selectedItem.quadrantLabel}</strong>
-                </div>
-                <div className="summary-pill">
-                  <span>Alignment</span>
-                  <strong>{selectedItem.alignmentLabel}</strong>
-                </div>
               </div>
             </div>
 
-            <RatingRow
-              label="Impact"
-              value={selectedItem.currentUserRating?.impact ?? null}
-              onSelect={(value) => saveRating(selectedItem, "impact", value)}
-            />
+            <div className="card">
+              <h2>Your Boards</h2>
 
-            <RatingRow
-              label="Effort"
-              value={selectedItem.currentUserRating?.effort ?? null}
-              onSelect={(value) => saveRating(selectedItem, "effort", value)}
-            />
-
-            <div className="stack">
-              <div className="list-section-header">
-                <h3>Active Items</h3>
-              </div>
-
-              {activeItems.length === 0 ? (
-                <p className="muted">No active items yet.</p>
+              {boards.length === 0 ? (
+                <p className="muted">No boards yet.</p>
               ) : (
-                <div className="compact-item-list">
-                  {activeItems.map((item) => (
+                <div className="board-list">
+                  {boards.map((board) => (
+                    <button
+                      key={board.id}
+                      type="button"
+                      className={`board-list-item ${selectedBoardId === board.id ? "selected" : ""}`}
+                      onClick={() => handleOpenBoard(board.id)}
+                    >
+                      <div className="board-list-title">{board.title}</div>
+                      <div className="muted">{humanizeBoardType(board.board_type)}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="card">
+              <h2>Create Board</h2>
+              <form onSubmit={handleCreateBoard} className="stack">
+                <label>
+                  Board Title
+                  <input
+                    value={createBoardForm.title}
+                    onChange={(e) =>
+                      setCreateBoardForm((prev) => ({
+                        ...prev,
+                        title: e.target.value,
+                      }))
+                    }
+                    placeholder="Bathroom Remodel"
+                  />
+                </label>
+
+                <div>
+                  <div className="field-label">Board Type</div>
+                  <div className="board-grid">
+                    {BOARD_TYPE_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={
+                          createBoardForm.boardType === option.value
+                            ? "board-option active"
+                            : "board-option"
+                        }
+                        onClick={() =>
+                          setCreateBoardForm((prev) => ({
+                            ...prev,
+                            boardType: option.value,
+                          }))
+                        }
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {createBoardError && <div className="error">{createBoardError}</div>}
+
+                <button type="submit" className="primary" disabled={createBoardLoading}>
+                  {createBoardLoading ? "Creating..." : "Create Board"}
+                </button>
+              </form>
+            </div>
+          </>
+        ) : null}
+
+        {renderTopTab ? (
+          <>
+            <div className="card">
+              <div className="eyebrow">{household.name}</div>
+              <h1>Top Priorities</h1>
+              <p className="muted">
+                Highest scoring items on {selectedBoard?.title || "this board"}.
+              </p>
+
+              <input
+                className="top-gap"
+                value={topSearch}
+                onChange={(e) => setTopSearch(e.target.value)}
+                placeholder="Search priorities..."
+              />
+            </div>
+
+            <div className="card">
+              {topPriorityItems.length === 0 ? (
+                <p className="muted">No scored items yet.</p>
+              ) : (
+                <div className="detail-list">
+                  {topPriorityItems.map((item, index) => (
+                    <DetailRow
+                      key={item.id}
+                      item={item}
+                      rank={index + 1}
+                      onOpen={() => handleJumpToItem(item.id)}
+                      onToggleComplete={() => toggleComplete(item)}
+                      openLabel="Open"
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        ) : null}
+
+        {renderDiscussionTab ? (
+          <>
+            <div className="card">
+              <div className="eyebrow">{household.name}</div>
+              <h1>Needs Discussion</h1>
+              <p className="muted">Missing ratings and items with disagreement.</p>
+
+              <input
+                className="top-gap"
+                value={discussionSearch}
+                onChange={(e) => setDiscussionSearch(e.target.value)}
+                placeholder="Search discussion items..."
+              />
+            </div>
+
+            <div className="card">
+              {needsDiscussionItems.length === 0 ? (
+                <p className="muted">Nothing obvious needs discussion right now.</p>
+              ) : (
+                <div className="detail-list">
+                  {needsDiscussionItems.map((item) => (
+                    <DetailRow
+                      key={item.id}
+                      item={item}
+                      onOpen={() => handleJumpToItem(item.id)}
+                      onToggleComplete={() => toggleComplete(item)}
+                      openLabel="Review"
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        ) : null}
+
+        {renderMainTab ? (
+          <>
+            <div className="card">
+              <div className="top-row">
+                <div>
+                  <div className="eyebrow">{household.name}</div>
+                  <h1>{selectedBoard?.title || "Board"}</h1>
+                  <p className="muted">
+                    Logged in as {profile?.display_name || user.email}
+                  </p>
+                </div>
+
+                <div className="header-actions">
+                  <button type="button" onClick={() => setAppTab(APP_TABS.BOARDS)}>
+                    Boards
+                  </button>
+                  <button type="button" onClick={handleSignOut}>
+                    Sign Out
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="top-row">
+                <div>
+                  <h2>Invite Partner</h2>
+                  <p className="muted">
+                    Share a one-time code so your partner can join this household.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={generateInviteCode}
+                  disabled={inviteLoading}
+                >
+                  {inviteLoading ? "Generating..." : "Generate Code"}
+                </button>
+              </div>
+
+              {inviteCode && (
+                <div className="invite-code-box">
+                  <div className="invite-code-label">Invite Code</div>
+                  <div className="invite-code">{inviteCode}</div>
+                </div>
+              )}
+
+              {inviteError && <div className="error top-gap">{inviteError}</div>}
+              {inviteMessage && <div className="success top-gap">{inviteMessage}</div>}
+            </div>
+
+            <div className="card">
+              <h2>Add Item</h2>
+              <form onSubmit={handleAddItem} className="inline-form">
+                <input
+                  value={itemTitle}
+                  onChange={(e) => setItemTitle(e.target.value)}
+                  placeholder="Add a new item..."
+                />
+                <button type="submit" className="primary" disabled={addingItem}>
+                  {addingItem ? "Adding..." : "Add"}
+                </button>
+              </form>
+
+              {itemError && <div className="error top-gap">{itemError}</div>}
+              {itemMessage && <div className="success top-gap">{itemMessage}</div>}
+            </div>
+
+            <div className="card selected-card">
+              <div className="top-row">
+                <h2>Focused Grid</h2>
+                <button
+                  type="button"
+                  onClick={() => setShowAllGridItems((prev) => !prev)}
+                >
+                  {showAllGridItems ? "Show Selected Only" : "Show All Items"}
+                </button>
+              </div>
+
+              {!selectedItem ? (
+                <p className="muted">Add your first item to get started.</p>
+              ) : (
+                <div className="stack">
+                  <div className="selected-header">
+                    <div>
+                      <div className="selected-title">{selectedItem.title}</div>
+                      <div className="muted">
+                        {selectedItem.score === null
+                          ? "Needs rating"
+                          : `Score ${selectedItem.score.toFixed(1)}`}
+                      </div>
+                    </div>
+
+                    <button type="button" onClick={() => toggleComplete(selectedItem)}>
+                      {selectedItem.is_completed ? "Mark Active" : "Mark Complete"}
+                    </button>
+                  </div>
+
+                  <div className="focus-grid">
+                    <div className="focus-box">
+                      <div className="quadrant top-left">Quick Win</div>
+                      <div className="quadrant top-right">Big Investment</div>
+                      <div className="quadrant bottom-left">Low-Stakes</div>
+                      <div className="quadrant bottom-right">Save for Later</div>
+
+                      {gridItems.map((item) => (
+                        <MiniDot
+                          key={item.id}
+                          x={item.avgEffort}
+                          y={item.avgImpact}
+                          selected={item.id === selectedItem.id}
+                          label={item.title}
+                        />
+                      ))}
+
+                      {selectedDots.map((dot) => (
+                        <Dot
+                          key={dot.key}
+                          label={dot.label}
+                          x={dot.x}
+                          y={dot.y}
+                          variant={dot.variant}
+                          offsetIndex={dot.offsetIndex}
+                        />
+                      ))}
+                    </div>
+
+                    <div className="focus-summary">
+                      <div className="summary-pill">
+                        <span>Quadrant</span>
+                        <strong>{selectedItem.quadrantLabel}</strong>
+                      </div>
+                      <div className="summary-pill">
+                        <span>Alignment</span>
+                        <strong>{selectedItem.alignmentLabel}</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  <RatingRow
+                    label="Impact"
+                    value={selectedItem.currentUserRating?.impact ?? null}
+                    onSelect={(value) => saveRating(selectedItem, "impact", value)}
+                  />
+
+                  <RatingRow
+                    label="Effort"
+                    value={selectedItem.currentUserRating?.effort ?? null}
+                    onSelect={(value) => saveRating(selectedItem, "effort", value)}
+                  />
+
+                  <div className="stack">
+                    <div className="list-section-header">
+                      <h3>Active Items</h3>
+                    </div>
+
+                    {activeItems.length === 0 ? (
+                      <p className="muted">No active items yet.</p>
+                    ) : (
+                      <div className="compact-item-list">
+                        {activeItems.map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            className={`compact-item-row ${selectedItemId === item.id ? "selected" : ""}`}
+                            onClick={() => setSelectedItemId(item.id)}
+                          >
+                            <span className="compact-item-name">{item.title}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="card">
+              <div className="top-row">
+                <h2>Completed</h2>
+                <button type="button" onClick={() => setShowCompleted((prev) => !prev)}>
+                  {showCompleted ? "Hide" : "Show"}
+                </button>
+              </div>
+
+              {!showCompleted ? (
+                <p className="muted">
+                  {completedItems.length} completed item{completedItems.length === 1 ? "" : "s"}
+                </p>
+              ) : completedItems.length === 0 ? (
+                <p className="muted">No completed items.</p>
+              ) : (
+                <div className="compact-item-list compact-item-list-completed">
+                  {completedItems.map((item) => (
                     <button
                       key={item.id}
                       type="button"
-                      className={`compact-item-row ${selectedItemId === item.id ? "selected" : ""}`}
+                      className={`compact-item-row completed ${selectedItemId === item.id ? "selected" : ""}`}
                       onClick={() => setSelectedItemId(item.id)}
                     >
                       <span className="compact-item-name">{item.title}</span>
@@ -1216,133 +1301,8 @@ export default function App() {
                 </div>
               )}
             </div>
-          )}
-        </div>
-      </div>
-
-      <div className="card">
-        <div className="top-row">
-          <h2>Completed</h2>
-          <button type="button" onClick={() => setShowCompleted((prev) => !prev)}>
-            {showCompleted ? "Hide" : "Show"}
-          </button>
-        </div>
-
-        {!showCompleted ? (
-          <p className="muted">
-            {completedItems.length} completed item{completedItems.length === 1 ? "" : "s"}
-          </p>
-        ) : completedItems.length === 0 ? (
-          <p className="muted">No completed items.</p>
-        ) : (
-          <div className="compact-item-list compact-item-list-completed">
-            {completedItems.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={`compact-item-row completed ${selectedItemId === item.id ? "selected" : ""}`}
-                onClick={() => setSelectedItemId(item.id)}
-              >
-                <span className="compact-item-name">{item.title}</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    </>
-  );
-
-  const renderTopTab = () => (
-    <>
-      <div className="card">
-        <div className="top-row">
-          <div>
-            <div className="eyebrow">{household.name}</div>
-            <h1>Top Priorities</h1>
-            <p className="muted">
-              Highest scoring items on {selectedBoard?.title || "this board"}.
-            </p>
-          </div>
-        </div>
-
-        <input
-          className="top-gap"
-          value={topSearch}
-          onChange={(e) => setTopSearch(e.target.value)}
-          placeholder="Search priorities..."
-        />
-      </div>
-
-      <div className="card">
-        {topPriorityItems.length === 0 ? (
-          <p className="muted">No scored items yet.</p>
-        ) : (
-          <div className="detail-list">
-            {topPriorityItems.map((item, index) => (
-              <DetailRow
-                key={item.id}
-                item={item}
-                rank={index + 1}
-                onSelect={() => jumpToItem(item.id)}
-                onToggleComplete={() => toggleComplete(item)}
-                actionLabel="Open"
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    </>
-  );
-
-  const renderDiscussionTab = () => (
-    <>
-      <div className="card">
-        <div className="top-row">
-          <div>
-            <div className="eyebrow">{household.name}</div>
-            <h1>Needs Discussion</h1>
-            <p className="muted">
-              Missing ratings and items with disagreement.
-            </p>
-          </div>
-        </div>
-
-        <input
-          className="top-gap"
-          value={discussionSearch}
-          onChange={(e) => setDiscussionSearch(e.target.value)}
-          placeholder="Search discussion items..."
-        />
-      </div>
-
-      <div className="card">
-        {needsDiscussionItems.length === 0 ? (
-          <p className="muted">Nothing obvious needs discussion right now.</p>
-        ) : (
-          <div className="detail-list">
-            {needsDiscussionItems.map((item) => (
-              <DetailRow
-                key={item.id}
-                item={item}
-                onSelect={() => jumpToItem(item.id)}
-                onToggleComplete={() => toggleComplete(item)}
-                actionLabel="Review"
-                discussion
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    </>
-  );
-
-  return (
-    <>
-      <div className="app-shell app-shell-with-toolbar">
-        {appTab === APP_TABS.MAIN && renderMainTab()}
-        {appTab === APP_TABS.TOP && renderTopTab()}
-        {appTab === APP_TABS.DISCUSSION && renderDiscussionTab()}
-        {appTab === APP_TABS.BOARDS && renderBoardsTab()}
+          </>
+        ) : null}
 
         {authError && <div className="error">{authError}</div>}
       </div>
@@ -1408,16 +1368,9 @@ function BottomToolbar({ tab, onChange }) {
   );
 }
 
-function DetailRow({
-  item,
-  rank,
-  onSelect,
-  onToggleComplete,
-  actionLabel = "Open",
-  discussion = false,
-}) {
+function DetailRow({ item, rank, onOpen, onToggleComplete, openLabel }) {
   return (
-    <div className={`detail-row ${discussion ? "discussion" : ""}`}>
+    <div className="detail-row">
       <div className="detail-row-main">
         <div className="detail-row-title-line">
           {rank ? <div className="detail-rank">{rank}</div> : null}
@@ -1428,20 +1381,14 @@ function DetailRow({
           <span className={`pill ${badgeClassFromQuadrant(item.quadrantLabel)}`}>
             {item.quadrantLabel}
           </span>
-
-          <span className="pill pill-neutral">
-            {item.alignmentLabel}
-          </span>
-
-          <span className="pill pill-neutral">
-            Score {formatMaybe(item.score)}
-          </span>
+          <span className="pill pill-neutral">{item.alignmentLabel}</span>
+          <span className="pill pill-neutral">Score {formatMaybe(item.score)}</span>
         </div>
       </div>
 
       <div className="detail-actions">
-        <button type="button" onClick={onSelect}>
-          {actionLabel}
+        <button type="button" onClick={onOpen}>
+          {openLabel}
         </button>
         <button type="button" onClick={onToggleComplete}>
           {item.is_completed ? "Mark Active" : "Complete"}
@@ -1499,8 +1446,8 @@ function getQuadrantLabel(avgImpact, avgEffort) {
 function getAlignmentLabel(currentUserRating, partnerRating, disagreementScore) {
   if (!currentUserRating || !partnerRating) return "Waiting on ratings";
   if (disagreementScore === null) return "Waiting on ratings";
-  if (disagreementScore <= 1) return "Aligned";
-  if (disagreementScore <= 3) return "Some disagreement";
+  if (disagreementScore <= 1) return "Low disagreement";
+  if (disagreementScore <= 3) return "Mid disagreement";
   return "High disagreement";
 }
 
@@ -1529,7 +1476,9 @@ const styles = `
     box-sizing: border-box;
   }
 
-  html, body, #root {
+  html,
+  body,
+  #root {
     min-height: 100%;
   }
 
@@ -1937,10 +1886,6 @@ const styles = `
     padding: 14px;
   }
 
-  .detail-row.discussion {
-    border-color: #6d5130;
-  }
-
   .detail-row-main {
     display: grid;
     gap: 10px;
@@ -2039,7 +1984,7 @@ const styles = `
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 8px;
-    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    padding: 10px 12px 10px 12px;
     background: rgba(10, 19, 31, 0.96);
     border-top: 1px solid #233b58;
     backdrop-filter: blur(10px);
