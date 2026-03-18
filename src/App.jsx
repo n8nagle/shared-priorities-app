@@ -28,17 +28,17 @@ const TUTORIAL_STEPS = [
   {
     title: "Start by adding items",
     body:
-      "A board is just a container until you add items to compare. Start on the Main tab and use Add Item to enter projects, purchases, meals, or whatever belongs on this board.",
+      "Welcome to your first board! Start on the Main tab and use Add Item to enter projects, purchases, meals, or whatever belongs on this board.",
   },
   {
-    title: "Then rate items on Main",
+    title: "Rate the items",
     body:
-      "After items exist, use the Main tab to select one, view where it lands on the grid, and rate it there.",
+      "Entered items will appear under the Focused Grid, where you will rate them for both Effort and Impact. Effort is the difficulty of the item, the amount of labor needed, and/or the cost. Impact is the importance of the item, the urgency of which it needs completed, and/or the satisfaction it will bring when completed.",
   },
   {
     title: "Work through unrated items first",
     body:
-      "The Unrated Items list is your queue. Items stay there until you deliberately choose both Impact and Effort.",
+      "The Unrated Items list is your queue. Items stay there until you deliberately rate both Impact and Effort.",
   },
   {
     title: "Use Next when you are done",
@@ -48,12 +48,12 @@ const TUTORIAL_STEPS = [
   {
     title: "Top Priorities shows the output",
     body:
-      "When you want the ranked list, go to Top Priorities. That tab is for deciding what rises to the top after things are rated.",
+      "Once you and your partner rate an item, it will move to the Top Priorities tab. This list uses both of your ratings to organize the items by priority.",
   },
   {
     title: "Needs Discussion shows real conflicts",
     body:
-      "Needs Discussion is only for items where both people fully rated the item and still landed in meaningful disagreement.",
+      "Items move to Needs Discussion when you and your partner rate items vastly different. Time to have a conversation!",
   },
 ];
 
