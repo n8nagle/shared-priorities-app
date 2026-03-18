@@ -337,8 +337,7 @@ export default function App() {
     const score =
       avgImpact !== null && avgEffort !== null ? avgImpact * 3 - avgEffort : null;
 
-    const currentUserRating =
-      ratings.find((rating) => rating.user_id === user.id) ?? null;
+    const currentUserRating = ratings.find((rating) => rating.user_id === user.id) ?? null;
 
     const partnerRatings = ratings.filter((rating) => rating.user_id !== user.id);
     const partnerRating = partnerRatings[0] ?? null;
@@ -373,9 +372,7 @@ export default function App() {
         : null;
 
     const disagreementScore =
-      impactDiff !== null && effortDiff !== null
-        ? impactDiff + effortDiff
-        : null;
+      impactDiff !== null && effortDiff !== null ? impactDiff + effortDiff : null;
 
     const alignmentLabel = getAlignmentLabel(
       currentUserRating,
@@ -514,20 +511,17 @@ export default function App() {
 
       if (householdError) throw householdError;
 
-      const { error: memberError } = await supabase
-        .from("household_members")
-        .insert({
-          household_id: householdInsert.id,
-          user_id: user.id,
-          role: "owner",
-        });
+      const { error: memberError } = await supabase.from("household_members").insert({
+        household_id: householdInsert.id,
+        user_id: user.id,
+        role: "owner",
+      });
 
       if (memberError) throw memberError;
 
       const selectedBoardLabel =
-        BOARD_TYPE_OPTIONS.find(
-          (option) => option.value === setupForm.boardType
-        )?.label ?? "Custom";
+        BOARD_TYPE_OPTIONS.find((option) => option.value === setupForm.boardType)?.label ??
+        "Custom";
 
       const { data: boardInsert, error: boardError } = await supabase
         .from("boards")
@@ -659,10 +653,7 @@ export default function App() {
     if (!isFullyRatedByUser(selectedItem)) return;
 
     const next = items.find(
-      (item) =>
-        !item.is_completed &&
-        item.id !== selectedItem.id &&
-        item.isCurrentUserUnrated
+      (item) => !item.is_completed && item.id !== selectedItem.id && item.isCurrentUserUnrated
     );
 
     if (next) {
@@ -696,10 +687,7 @@ export default function App() {
     setItemMessage("");
 
     try {
-      const { error } = await supabase
-        .from("items")
-        .update({ title })
-        .eq("id", editingItemId);
+      const { error } = await supabase.from("items").update({ title }).eq("id", editingItemId);
 
       if (error) throw error;
 
@@ -828,9 +816,7 @@ export default function App() {
 
   const gridItems = useMemo(() => {
     if (!showAllGridItems) return [];
-    return activeItems.filter(
-      (item) => item.avgImpact !== null && item.avgEffort !== null
-    );
+    return activeItems.filter((item) => item.avgImpact !== null && item.avgEffort !== null);
   }, [activeItems, showAllGridItems]);
 
   const topPriorityItems = useMemo(() => {
@@ -946,7 +932,7 @@ export default function App() {
     return (
       <>
         <div className="app-shell">
-          <div className="card">Loading...</div>
+          <div className="card card-standard">Loading...</div>
         </div>
         <style>{styles}</style>
       </>
@@ -957,7 +943,7 @@ export default function App() {
     return (
       <>
         <div className="app-shell auth-shell">
-          <div className="card auth-card">
+          <div className="card card-standard auth-card">
             <h1>Shared Priorities</h1>
             <p className="muted">Rank what matters most together.</p>
 
@@ -1036,7 +1022,7 @@ export default function App() {
               {authError && <div className="error">{authError}</div>}
               {authMessage && <div className="success">{authMessage}</div>}
 
-              <button type="submit" className="primary">
+              <button type="submit" className="primary btn-lg">
                 {authMode === "signup" ? "Create Account" : "Log In"}
               </button>
             </form>
@@ -1051,7 +1037,7 @@ export default function App() {
     return (
       <>
         <div className="app-shell auth-shell">
-          <div className="card">
+          <div className="card card-standard">
             <div className="top-row">
               <div>
                 <h1>{setupMode === "create" ? "Choose your board type" : "Join a household"}</h1>
@@ -1061,7 +1047,7 @@ export default function App() {
                     : "Enter the invite code from your partner."}
                 </p>
               </div>
-              <button type="button" onClick={handleSignOut}>
+              <button type="button" className="ghost-btn" onClick={handleSignOut}>
                 Sign Out
               </button>
             </div>
@@ -1144,11 +1130,7 @@ export default function App() {
 
               {setupError && <div className="error">{setupError}</div>}
 
-              <button
-                type="submit"
-                className="primary"
-                disabled={setupLoading}
-              >
+              <button type="submit" className="primary btn-lg" disabled={setupLoading}>
                 {setupLoading
                   ? "Working..."
                   : setupMode === "create"
@@ -1166,28 +1148,27 @@ export default function App() {
   const renderBoardsTab = appTab === APP_TABS.BOARDS;
   const renderTopTab = appTab === APP_TABS.TOP;
   const renderDiscussionTab = appTab === APP_TABS.DISCUSSION;
-  const renderMainTab =
-    appTab === APP_TABS.MAIN || (!selectedBoard && appTab !== APP_TABS.BOARDS);
+  const renderMainTab = appTab === APP_TABS.MAIN || (!selectedBoard && appTab !== APP_TABS.BOARDS);
 
   return (
     <>
       <div className="app-shell app-shell-with-toolbar">
         {renderBoardsTab ? (
           <>
-            <div className="card">
+            <div className="card card-standard">
               <div className="top-row">
                 <div>
                   <div className="eyebrow">{household.name}</div>
                   <h1>Boards</h1>
                   <p className="muted">Choose a board or create a new one.</p>
                 </div>
-                <button type="button" onClick={handleSignOut}>
+                <button type="button" className="ghost-btn" onClick={handleSignOut}>
                   Sign Out
                 </button>
               </div>
             </div>
 
-            <div className="card">
+            <div className="card card-standard">
               <h2>Your Boards</h2>
 
               {boards.length === 0 ? (
@@ -1209,7 +1190,7 @@ export default function App() {
               )}
             </div>
 
-            <div className="card">
+            <div className="card card-standard">
               <h2>Create Board</h2>
               <form onSubmit={handleCreateBoard} className="stack">
                 <label>
@@ -1258,17 +1239,42 @@ export default function App() {
                 </button>
               </form>
             </div>
+
+            <div className="card card-muted">
+              <div className="section-heading-row">
+                <div>
+                  <h2>Invite Partner</h2>
+                  <p className="muted">Generate a code when you actually need it.</p>
+                </div>
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  onClick={generateInviteCode}
+                  disabled={inviteLoading}
+                >
+                  {inviteLoading ? "Generating..." : "Generate Code"}
+                </button>
+              </div>
+
+              {inviteCode && (
+                <div className="invite-code-box">
+                  <div className="invite-code-label">Invite Code</div>
+                  <div className="invite-code">{inviteCode}</div>
+                </div>
+              )}
+
+              {inviteError && <div className="error top-gap">{inviteError}</div>}
+              {inviteMessage && <div className="success top-gap">{inviteMessage}</div>}
+            </div>
           </>
         ) : null}
 
         {renderTopTab ? (
           <>
-            <div className="card">
+            <div className="card card-standard">
               <div className="eyebrow">{household.name}</div>
               <h1>Top Priorities</h1>
-              <p className="muted">
-                Highest scoring items on {selectedBoard?.title || "this board"}.
-              </p>
+              <p className="muted">Highest scoring items on {selectedBoard?.title || "this board"}.</p>
 
               <div className="filters-row top-gap">
                 <input
@@ -1289,7 +1295,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="card">
+            <div className="card card-standard">
               {topPriorityItems.length === 0 ? (
                 <p className="muted">No items match this filter.</p>
               ) : (
@@ -1318,7 +1324,7 @@ export default function App() {
 
         {renderDiscussionTab ? (
           <>
-            <div className="card">
+            <div className="card card-standard">
               <div className="eyebrow">{household.name}</div>
               <h1>Needs Discussion</h1>
               <p className="muted">Only items with mid or high disagreement appear here.</p>
@@ -1331,7 +1337,7 @@ export default function App() {
               />
             </div>
 
-            <div className="card">
+            <div className="card card-standard">
               {needsDiscussionItems.length === 0 ? (
                 <p className="muted">No mid or high disagreement items right now.</p>
               ) : (
@@ -1359,67 +1365,40 @@ export default function App() {
 
         {renderMainTab ? (
           <>
-            <div className="card">
-              <div className="top-row">
+            <div className="card card-standard card-header-compact">
+              <div className="top-row header-row-mobile">
                 <div>
                   <div className="eyebrow">{household.name}</div>
                   <h1>{selectedBoard?.title || "Board"}</h1>
-                  <p className="muted">
-                    Logged in as {profile?.display_name || user.email}
-                  </p>
+                  <p className="muted">Logged in as {profile?.display_name || user.email}</p>
                 </div>
 
-                <div className="header-actions">
-                  <button type="button" onClick={openTutorial}>
+                <div className="header-actions compact-actions">
+                  <button type="button" className="ghost-btn" onClick={openTutorial}>
                     How it works
                   </button>
-                  <button type="button" onClick={() => setAppTab(APP_TABS.BOARDS)}>
+                  <button type="button" className="ghost-btn" onClick={() => setAppTab(APP_TABS.BOARDS)}>
                     Boards
                   </button>
-                  <button type="button" onClick={handleSignOut}>
-                    Sign Out
-                  </button>
                 </div>
               </div>
             </div>
 
-            <div className="card">
-              <div className="top-row">
+            <div className="card card-standard card-add-item">
+              <div className="section-heading-row">
                 <div>
-                  <h2>Invite Partner</h2>
-                  <p className="muted">
-                    Share a one-time code so your partner can join this household.
-                  </p>
+                  <h2>Add Item</h2>
+                  <p className="muted">Start here if you need to add something new.</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={generateInviteCode}
-                  disabled={inviteLoading}
-                >
-                  {inviteLoading ? "Generating..." : "Generate Code"}
-                </button>
               </div>
 
-              {inviteCode && (
-                <div className="invite-code-box">
-                  <div className="invite-code-label">Invite Code</div>
-                  <div className="invite-code">{inviteCode}</div>
-                </div>
-              )}
-
-              {inviteError && <div className="error top-gap">{inviteError}</div>}
-              {inviteMessage && <div className="success top-gap">{inviteMessage}</div>}
-            </div>
-
-            <div className="card">
-              <h2>Add Item</h2>
-              <form onSubmit={handleAddItem} className="inline-form">
+              <form onSubmit={handleAddItem} className="inline-form top-gap">
                 <input
                   value={itemTitle}
                   onChange={(e) => setItemTitle(e.target.value)}
                   placeholder="Add a new item..."
                 />
-                <button type="submit" className="primary" disabled={addingItem}>
+                <button type="submit" className="primary add-btn" disabled={addingItem}>
                   {addingItem ? "Adding..." : "Add"}
                 </button>
               </form>
@@ -1428,11 +1407,43 @@ export default function App() {
               {itemMessage && <div className="success top-gap">{itemMessage}</div>}
             </div>
 
-            <div className="card selected-card">
-              <div className="top-row">
-                <h2>Focused Grid</h2>
+            <div className="card card-standard card-queue">
+              <div className="section-heading-row">
+                <div>
+                  <h2>Unrated Items</h2>
+                  <p className="muted">Work through these first.</p>
+                </div>
+                <div className="queue-count">{unratedItems.length}</div>
+              </div>
+
+              {unratedItems.length === 0 ? (
+                <p className="muted">You have rated everything active on this board.</p>
+              ) : (
+                <div className="compact-item-list queue-list top-gap">
+                  {unratedItems.map((item, index) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={`compact-item-row queue-row ${selectedItemId === item.id ? "selected" : ""}`}
+                      onClick={() => setSelectedItemId(item.id)}
+                    >
+                      <span className="queue-number">{index + 1}</span>
+                      <span className="compact-item-name">{item.title}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="card card-hero selected-card">
+              <div className="top-row selected-card-top">
+                <div>
+                  <div className="eyebrow">Focused Item</div>
+                  <h2>Focused Grid</h2>
+                </div>
                 <button
                   type="button"
+                  className="ghost-btn"
                   onClick={() => setShowAllGridItems((prev) => !prev)}
                 >
                   {showAllGridItems ? "Show Selected Only" : "Show All Items"}
@@ -1442,7 +1453,7 @@ export default function App() {
               {!selectedItem ? (
                 <p className="muted">Add your first item to get started.</p>
               ) : (
-                <div className="stack">
+                <div className="stack hero-stack">
                   <div className="selected-header">
                     <div className="selected-header-main">
                       {editingItemId === selectedItem.id ? (
@@ -1461,7 +1472,7 @@ export default function App() {
                             >
                               {savingEdit ? "Saving..." : "Save"}
                             </button>
-                            <button type="button" onClick={cancelEditingItem}>
+                            <button type="button" className="ghost-btn" onClick={cancelEditingItem}>
                               Cancel
                             </button>
                           </div>
@@ -1469,29 +1480,43 @@ export default function App() {
                       ) : (
                         <>
                           <div className="selected-title">{selectedItem.title}</div>
-                          <div className="muted">
-                            {selectedItem.score === null
-                              ? "Needs rating"
-                              : `Score ${selectedItem.score.toFixed(1)}`}
+                          <div className="selected-meta-line">
+                            <span className={`pill ${badgeClassFromQuadrant(selectedItem.quadrantLabel)}`}>
+                              {selectedItem.quadrantLabel}
+                            </span>
+                            <span className="pill pill-neutral">{selectedItem.alignmentLabel}</span>
+                            <span className="pill pill-neutral">
+                              {selectedItem.score === null
+                                ? "Needs rating"
+                                : `Score ${selectedItem.score.toFixed(1)}`}
+                            </span>
                           </div>
                         </>
                       )}
                     </div>
 
-                    <div className="selected-actions">
-                      <button type="button" onClick={() => startEditingItem(selectedItem)}>
+                    <div className="selected-actions mobile-priority-actions">
+                      <button
+                        type="button"
+                        className="secondary-btn"
+                        onClick={() => toggleComplete(selectedItem)}
+                      >
+                        {selectedItem.is_completed ? "Mark Active" : "Mark Complete"}
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-btn"
+                        onClick={() => startEditingItem(selectedItem)}
+                      >
                         Edit
                       </button>
                       <button
                         type="button"
-                        className="danger-btn"
+                        className="danger-btn subtle"
                         onClick={() => deleteItem(selectedItem)}
                         disabled={deletingItemId === selectedItem.id}
                       >
                         {deletingItemId === selectedItem.id ? "Deleting..." : "Delete"}
-                      </button>
-                      <button type="button" onClick={() => toggleComplete(selectedItem)}>
-                        {selectedItem.is_completed ? "Mark Active" : "Mark Complete"}
                       </button>
                     </div>
                   </div>
@@ -1551,44 +1576,21 @@ export default function App() {
                     onSelect={(value) => saveRating(selectedItem, "effort", value)}
                   />
 
-                  <div className="next-action">
+                  <div className="next-action next-action-hero">
                     <button
                       type="button"
-                      className="primary"
+                      className="primary btn-lg next-btn"
                       disabled={!isFullyRatedByUser(selectedItem)}
                       onClick={goToNextUnrated}
                     >
                       Next Unrated Item
                     </button>
                   </div>
-
-                  <div className="stack">
-                    <div className="list-section-header">
-                      <h3>Unrated Items</h3>
-                    </div>
-
-                    {unratedItems.length === 0 ? (
-                      <p className="muted">You have rated everything active on this board.</p>
-                    ) : (
-                      <div className="compact-item-list">
-                        {unratedItems.map((item) => (
-                          <button
-                            key={item.id}
-                            type="button"
-                            className={`compact-item-row ${selectedItemId === item.id ? "selected" : ""}`}
-                            onClick={() => setSelectedItemId(item.id)}
-                          >
-                            <span className="compact-item-name">{item.title}</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
                 </div>
               )}
             </div>
 
-            <div className="card">
+            <div className="card card-muted">
               <div className="top-row">
                 <div>
                   <h2>All Active Items</h2>
@@ -1596,7 +1598,7 @@ export default function App() {
                     {activeItems.length} active item{activeItems.length === 1 ? "" : "s"}
                   </p>
                 </div>
-                <button type="button" onClick={() => setShowActiveItems((prev) => !prev)}>
+                <button type="button" className="ghost-btn" onClick={() => setShowActiveItems((prev) => !prev)}>
                   {showActiveItems ? "Hide" : "Show"}
                 </button>
               </div>
@@ -1606,7 +1608,7 @@ export default function App() {
               ) : activeItems.length === 0 ? (
                 <p className="muted">No active items yet.</p>
               ) : (
-                <div className="compact-item-list">
+                <div className="compact-item-list top-gap">
                   {activeItems.map((item) => (
                     <button
                       key={item.id}
@@ -1621,22 +1623,23 @@ export default function App() {
               )}
             </div>
 
-            <div className="card">
+            <div className="card card-muted">
               <div className="top-row">
-                <h2>Completed</h2>
-                <button type="button" onClick={() => setShowCompleted((prev) => !prev)}>
+                <div>
+                  <h2>Completed</h2>
+                  <p className="muted">
+                    {completedItems.length} completed item{completedItems.length === 1 ? "" : "s"}
+                  </p>
+                </div>
+                <button type="button" className="ghost-btn" onClick={() => setShowCompleted((prev) => !prev)}>
                   {showCompleted ? "Hide" : "Show"}
                 </button>
               </div>
 
-              {!showCompleted ? (
-                <p className="muted">
-                  {completedItems.length} completed item{completedItems.length === 1 ? "" : "s"}
-                </p>
-              ) : completedItems.length === 0 ? (
-                <p className="muted">No completed items.</p>
+              {!showCompleted ? null : completedItems.length === 0 ? (
+                <p className="muted top-gap">No completed items.</p>
               ) : (
-                <div className="compact-item-list compact-item-list-completed">
+                <div className="compact-item-list compact-item-list-completed top-gap">
                   {completedItems.map((item) => (
                     <button
                       key={item.id}
@@ -1733,15 +1736,7 @@ function BottomToolbar({ tab, onChange, discussionCount }) {
   );
 }
 
-function TutorialModal({
-  step,
-  totalSteps,
-  title,
-  body,
-  onClose,
-  onNext,
-  onPrev,
-}) {
+function TutorialModal({ step, totalSteps, title, body, onClose, onNext, onPrev }) {
   const isLast = step === totalSteps - 1;
 
   return (
@@ -1751,7 +1746,7 @@ function TutorialModal({
           <div className="tutorial-step">
             Step {step + 1} of {totalSteps}
           </div>
-          <button type="button" className="tutorial-close" onClick={onClose}>
+          <button type="button" className="tutorial-close ghost-btn" onClick={onClose}>
             ✕
           </button>
         </div>
@@ -1761,19 +1756,16 @@ function TutorialModal({
 
         <div className="tutorial-dots">
           {Array.from({ length: totalSteps }).map((_, index) => (
-            <span
-              key={index}
-              className={`tutorial-dot ${index === step ? "active" : ""}`}
-            />
+            <span key={index} className={`tutorial-dot ${index === step ? "active" : ""}`} />
           ))}
         </div>
 
         <div className="tutorial-actions">
-          <button type="button" onClick={onClose}>
+          <button type="button" className="ghost-btn" onClick={onClose}>
             Skip
           </button>
           <div className="tutorial-actions-right">
-            <button type="button" onClick={onPrev} disabled={step === 0}>
+            <button type="button" className="ghost-btn" onClick={onPrev} disabled={step === 0}>
               Back
             </button>
             <button type="button" className="primary" onClick={onNext}>
@@ -1786,16 +1778,7 @@ function TutorialModal({
   );
 }
 
-function DetailRow({
-  item,
-  rank,
-  onOpen,
-  onToggleComplete,
-  onEdit,
-  onDelete,
-  openLabel,
-  deleting = false,
-}) {
+function DetailRow({ item, rank, onOpen, onToggleComplete, onEdit, onDelete, openLabel, deleting = false }) {
   return (
     <div className="detail-row">
       <div className="detail-row-main">
@@ -1805,25 +1788,23 @@ function DetailRow({
         </div>
 
         <div className="detail-meta">
-          <span className={`pill ${badgeClassFromQuadrant(item.quadrantLabel)}`}>
-            {item.quadrantLabel}
-          </span>
+          <span className={`pill ${badgeClassFromQuadrant(item.quadrantLabel)}`}>{item.quadrantLabel}</span>
           <span className="pill pill-neutral">{item.alignmentLabel}</span>
           <span className="pill pill-neutral">Score {formatMaybe(item.score)}</span>
         </div>
       </div>
 
       <div className="detail-actions">
-        <button type="button" onClick={onOpen}>
+        <button type="button" className="secondary-btn" onClick={onOpen}>
           {openLabel}
         </button>
-        <button type="button" onClick={onEdit}>
+        <button type="button" className="ghost-btn" onClick={onEdit}>
           Edit
         </button>
-        <button type="button" className="danger-btn" onClick={onDelete} disabled={deleting}>
+        <button type="button" className="danger-btn subtle" onClick={onDelete} disabled={deleting}>
           {deleting ? "Deleting..." : "Delete"}
         </button>
-        <button type="button" onClick={onToggleComplete}>
+        <button type="button" className="ghost-btn" onClick={onToggleComplete}>
           {item.is_completed ? "Mark Active" : "Complete"}
         </button>
       </div>
@@ -1847,11 +1828,7 @@ function MiniDot({ x, y, selected, label }) {
   const bottom = `${coordToPercent(y)}%`;
 
   return (
-    <div
-      className={`mini-dot ${selected ? "selected" : ""}`}
-      style={{ left, bottom }}
-      title={label}
-    />
+    <div className={`mini-dot ${selected ? "selected" : ""}`} style={{ left, bottom }} title={label} />
   );
 }
 
@@ -1897,13 +1874,7 @@ function getQuadrantLabel(avgImpact, avgEffort) {
   return "Save for Later";
 }
 
-function getAlignmentLabel(
-  currentUserRating,
-  partnerRating,
-  disagreementScore,
-  currentQuadrant,
-  partnerQuadrant
-) {
+function getAlignmentLabel(currentUserRating, partnerRating, disagreementScore, currentQuadrant, partnerQuadrant) {
   if (!hasCompleteUserRating(currentUserRating) || !hasCompleteUserRating(partnerRating)) {
     return "Waiting on ratings";
   }
@@ -1976,7 +1947,9 @@ const styles = `
   body {
     margin: 0;
     font-family: Inter, system-ui, sans-serif;
-    background: #0b1727;
+    background:
+      radial-gradient(circle at top, rgba(43, 71, 108, 0.32), transparent 36%),
+      #09131f;
     color: #f4f7fb;
   }
 
@@ -1989,13 +1962,13 @@ const styles = `
   .app-shell {
     max-width: 760px;
     margin: 0 auto;
-    padding: 16px;
+    padding: 14px;
     display: grid;
-    gap: 16px;
+    gap: 14px;
   }
 
   .app-shell-with-toolbar {
-    padding-bottom: 96px;
+    padding-bottom: 94px;
   }
 
   .auth-shell {
@@ -2003,43 +1976,88 @@ const styles = `
   }
 
   .card {
-    background: #11243b;
-    border: 1px solid #233b58;
-    border-radius: 20px;
+    border-radius: 22px;
     padding: 16px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+  }
+
+  .card-standard {
+    background: linear-gradient(180deg, rgba(17, 36, 59, 0.98), rgba(13, 29, 49, 0.98));
+    border: 1px solid rgba(62, 95, 134, 0.45);
+    box-shadow: 0 10px 24px rgba(0,0,0,0.2);
+  }
+
+  .card-hero {
+    background: linear-gradient(180deg, rgba(24, 43, 69, 0.99), rgba(16, 30, 48, 0.99));
+    border: 1px solid rgba(240, 163, 41, 0.3);
+    box-shadow: 0 16px 34px rgba(0,0,0,0.3);
+    padding: 18px;
+  }
+
+  .card-muted {
+    background: linear-gradient(180deg, rgba(13, 25, 40, 0.96), rgba(10, 20, 33, 0.96));
+    border: 1px solid rgba(51, 80, 112, 0.45);
+    box-shadow: 0 8px 18px rgba(0,0,0,0.16);
+  }
+
+  .card-header-compact {
+    padding: 14px 16px;
+  }
+
+  .card-add-item {
+    padding: 16px;
+  }
+
+  .card-queue {
+    padding: 16px;
   }
 
   .selected-card {
-    border-color: #3e5f86;
-    box-shadow: 0 10px 28px rgba(0,0,0,0.22);
+    scroll-margin-top: 12px;
   }
 
   .auth-card {
-    margin-top: 48px;
+    margin-top: 40px;
   }
 
   h1, h2, h3, p {
     margin-top: 0;
   }
 
-  h2, h3 {
+  h1 {
+    font-size: 1.5rem;
+    line-height: 1.15;
+    margin-bottom: 6px;
+  }
+
+  h2 {
+    font-size: 1.15rem;
+    margin-bottom: 4px;
+  }
+
+  h3 {
     margin-bottom: 6px;
   }
 
   .muted {
-    color: #9cb1ca;
+    color: #96abc4;
   }
 
   .eyebrow {
     color: #8ea8c6;
-    font-size: 0.9rem;
-    margin-bottom: 4px;
+    font-size: 0.82rem;
+    margin-bottom: 5px;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    font-weight: 700;
   }
 
   .stack {
     display: grid;
     gap: 12px;
+  }
+
+  .hero-stack {
+    gap: 14px;
   }
 
   label {
@@ -2056,44 +2074,87 @@ const styles = `
   .field-help {
     font-weight: 500;
     color: #9cb1ca;
-    font-size: 0.9rem;
+    font-size: 0.88rem;
   }
 
   input,
   select {
     width: 100%;
-    padding: 12px 14px;
-    border-radius: 12px;
+    padding: 13px 14px;
+    border-radius: 14px;
     border: 1px solid #335070;
     background: #0d1d31;
     color: #f4f7fb;
+    outline: none;
+  }
+
+  input:focus,
+  select:focus {
+    border-color: rgba(240, 163, 41, 0.75);
+    box-shadow: 0 0 0 3px rgba(240, 163, 41, 0.14);
   }
 
   button {
-    border: 1px solid #335070;
-    background: #18304c;
+    border: 1px solid rgba(76, 106, 141, 0.42);
+    background: rgba(22, 46, 73, 0.88);
     color: #f4f7fb;
-    border-radius: 12px;
+    border-radius: 14px;
     padding: 10px 14px;
     cursor: pointer;
+    transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+  }
+
+  button:hover:not(:disabled) {
+    transform: translateY(-1px);
+    background: rgba(28, 56, 88, 0.96);
+    border-color: rgba(124, 157, 193, 0.52);
   }
 
   button.primary {
-    background: #f0a329;
-    color: #102235;
+    background: linear-gradient(180deg, #f3b347, #e99a18);
+    color: #11243b;
     border: none;
+    font-weight: 800;
+    box-shadow: 0 10px 20px rgba(240, 163, 41, 0.22);
+  }
+
+  .secondary-btn {
+    background: rgba(34, 66, 101, 0.95);
+    color: #edf4fc;
+    border-color: rgba(120, 149, 181, 0.34);
     font-weight: 700;
   }
 
+  .ghost-btn {
+    background: transparent;
+    color: #c9d8ea;
+    border-color: rgba(95, 124, 157, 0.3);
+  }
+
   .danger-btn {
-    background: rgba(229, 57, 53, 0.14);
-    border-color: rgba(229, 57, 53, 0.35);
-    color: #ffd6d4;
+    background: rgba(229, 57, 53, 0.12);
+    border-color: rgba(229, 57, 53, 0.24);
+    color: #ffd4d4;
+  }
+
+  .danger-btn.subtle {
+    background: rgba(229, 57, 53, 0.08);
+    border-color: rgba(229, 57, 53, 0.18);
+    color: #ffb8b6;
+  }
+
+  .btn-lg {
+    min-height: 52px;
+  }
+
+  .add-btn {
+    min-width: 88px;
   }
 
   button:disabled {
     opacity: 0.55;
     cursor: default;
+    transform: none;
   }
 
   .auth-toggle {
@@ -2108,10 +2169,10 @@ const styles = `
   .bottom-toolbar button.active,
   .board-list-item.selected,
   .compact-item-row.selected {
-    background: #f0a329;
+    background: linear-gradient(180deg, #f3b347, #e99a18);
     color: #102235;
     border-color: transparent;
-    font-weight: 700;
+    font-weight: 800;
   }
 
   .top-row {
@@ -2125,6 +2186,17 @@ const styles = `
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
+  }
+
+  .compact-actions button {
+    padding: 9px 12px;
+  }
+
+  .section-heading-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
   }
 
   .filters-row {
@@ -2176,13 +2248,13 @@ const styles = `
   .invite-code-box {
     margin-top: 12px;
     padding: 14px;
-    border-radius: 14px;
-    background: #0d1d31;
-    border: 1px solid #335070;
+    border-radius: 16px;
+    background: rgba(13, 29, 49, 0.85);
+    border: 1px solid rgba(69, 102, 138, 0.45);
   }
 
   .invite-code-label {
-    font-size: 0.85rem;
+    font-size: 0.82rem;
     color: #8ea8c6;
     margin-bottom: 6px;
   }
@@ -2194,15 +2266,52 @@ const styles = `
     word-break: break-all;
   }
 
+  .queue-count {
+    min-width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    background: rgba(240, 163, 41, 0.18);
+    border: 1px solid rgba(240, 163, 41, 0.3);
+    color: #ffd89d;
+    font-weight: 800;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .queue-list {
+    max-height: 220px;
+  }
+
+  .queue-row {
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+  }
+
+  .queue-number {
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.08);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.82rem;
+    font-weight: 800;
+  }
+
+  .selected-card-top {
+    align-items: center;
+  }
+
   .selected-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
+    display: grid;
+    gap: 14px;
   }
 
   .selected-header-main {
-    flex: 1;
     min-width: 0;
   }
 
@@ -2210,12 +2319,27 @@ const styles = `
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
-    justify-content: flex-end;
+  }
+
+  .mobile-priority-actions button:first-child {
+    flex: 1 1 100%;
+  }
+
+  .mobile-priority-actions button:not(:first-child) {
+    flex: 1 1 0;
   }
 
   .selected-title {
-    font-size: 1.2rem;
+    font-size: 1.28rem;
+    line-height: 1.2;
     font-weight: 800;
+    margin-bottom: 8px;
+  }
+
+  .selected-meta-line {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
   }
 
   .edit-inline {
@@ -2236,20 +2360,20 @@ const styles = `
 
   .focus-box {
     position: relative;
-    height: 320px;
-    border-radius: 18px;
-    border: 1px solid #335070;
+    height: 300px;
+    border-radius: 20px;
+    border: 1px solid rgba(93, 123, 157, 0.32);
     background:
-      linear-gradient(to right, rgba(255,255,255,0.06) 1px, transparent 1px),
-      linear-gradient(to top, rgba(255,255,255,0.06) 1px, transparent 1px),
-      #0d1d31;
+      linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px),
+      linear-gradient(to top, rgba(255,255,255,0.05) 1px, transparent 1px),
+      linear-gradient(180deg, #102033 0%, #0b1727 100%);
     background-size: 25% 25%;
     overflow: hidden;
   }
 
   .quadrant {
     position: absolute;
-    font-size: 0.78rem;
+    font-size: 0.76rem;
     color: #7f96b2;
     font-weight: 700;
     pointer-events: none;
@@ -2283,6 +2407,7 @@ const styles = `
     border-radius: 999px;
     border: 2px solid white;
     z-index: 3;
+    box-shadow: 0 0 0 4px rgba(9, 19, 31, 0.32);
   }
 
   .dot span {
@@ -2290,9 +2415,10 @@ const styles = `
     left: 50%;
     transform: translateX(-50%);
     white-space: nowrap;
-    font-size: 0.75rem;
+    font-size: 0.74rem;
     color: #d9e4f2;
     pointer-events: none;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.55);
   }
 
   .dot.you {
@@ -2314,14 +2440,14 @@ const styles = `
     height: 10px;
     border-radius: 999px;
     background: rgba(220, 233, 247, 0.45);
-    border: 1px solid rgba(255,255,255,0.25);
+    border: 1px solid rgba(255,255,255,0.22);
     z-index: 1;
   }
 
   .mini-dot.selected {
     width: 14px;
     height: 14px;
-    background: rgba(240, 163, 41, 0.8);
+    background: rgba(240, 163, 41, 0.82);
     border-color: rgba(255,255,255,0.5);
     z-index: 2;
   }
@@ -2333,21 +2459,21 @@ const styles = `
   }
 
   .summary-pill {
-    background: #0d1d31;
-    border: 1px solid #335070;
-    border-radius: 14px;
+    background: rgba(10, 22, 37, 0.72);
+    border: 1px solid rgba(74, 106, 142, 0.42);
+    border-radius: 16px;
     padding: 12px 14px;
     display: grid;
     gap: 4px;
   }
 
   .summary-pill span {
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     color: #9cb1ca;
   }
 
   .summary-pill strong {
-    font-size: 0.95rem;
+    font-size: 0.94rem;
   }
 
   .rating-row {
@@ -2356,25 +2482,25 @@ const styles = `
   }
 
   .rating-buttons {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
     gap: 8px;
-    flex-wrap: wrap;
   }
 
   .rating-btn {
-    min-width: 44px;
-    min-height: 44px;
+    min-width: 0;
+    min-height: 50px;
+    width: 100%;
+    font-weight: 800;
   }
 
   .next-action {
     display: flex;
-    justify-content: flex-end;
+    justify-content: stretch;
   }
 
-  .list-section-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+  .next-action-hero button {
+    width: 100%;
   }
 
   .compact-item-list {
@@ -2382,7 +2508,7 @@ const styles = `
     gap: 8px;
     max-height: 292px;
     overflow-y: auto;
-    padding-right: 4px;
+    padding-right: 2px;
   }
 
   .compact-item-list-completed {
@@ -2394,17 +2520,18 @@ const styles = `
     text-align: left;
     background: #0d1d31;
     border: 1px solid #2c4765;
-    padding: 12px 14px;
-    min-height: 50px;
+    padding: 14px;
+    min-height: 54px;
+    border-radius: 16px;
   }
 
   .compact-item-row.completed {
-    opacity: 0.75;
+    opacity: 0.72;
   }
 
   .compact-item-name {
     display: block;
-    font-weight: 600;
+    font-weight: 700;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2422,7 +2549,7 @@ const styles = `
     gap: 12px;
     background: #0d1d31;
     border: 1px solid #2a4562;
-    border-radius: 16px;
+    border-radius: 18px;
     padding: 14px;
   }
 
@@ -2479,7 +2606,7 @@ const styles = `
     min-height: 28px;
     padding: 4px 10px;
     border-radius: 999px;
-    font-size: 0.82rem;
+    font-size: 0.8rem;
     font-weight: 700;
     border: 1px solid transparent;
   }
@@ -2512,7 +2639,7 @@ const styles = `
   .pill-neutral {
     background: rgba(255, 255, 255, 0.08);
     color: #d9e4f2;
-    border-color: rgba(255,255,255,0.16);
+    border-color: rgba(255,255,255,0.14);
   }
 
   .bottom-toolbar {
@@ -2524,18 +2651,19 @@ const styles = `
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 8px;
-    padding: 10px 12px 10px 12px;
-    background: rgba(10, 19, 31, 0.96);
+    padding: 10px 12px 12px;
+    background: rgba(8, 16, 26, 0.96);
     border-top: 1px solid #233b58;
     backdrop-filter: blur(10px);
   }
 
   .bottom-toolbar button {
-    min-height: 48px;
+    min-height: 50px;
     padding: 10px 8px;
-    font-size: 0.88rem;
+    font-size: 0.84rem;
     text-align: center;
-    background: #13273f;
+    background: rgba(20, 39, 62, 0.94);
+    line-height: 1.15;
   }
 
   .toolbar-badge-btn {
@@ -2543,7 +2671,7 @@ const styles = `
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 6px;
   }
 
   .notif-badge {
@@ -2656,12 +2784,13 @@ const styles = `
 
   @media (max-width: 640px) {
     .top-row,
-    .selected-header,
     .inline-form,
     .header-actions,
     .detail-row,
     .filters-row,
-    .tutorial-actions {
+    .tutorial-actions,
+    .section-heading-row,
+    .header-row-mobile {
       display: grid;
     }
 
@@ -2679,15 +2808,29 @@ const styles = `
     }
 
     .detail-actions,
-    .selected-actions,
     .edit-inline-actions,
     .tutorial-actions-right {
       flex-direction: row;
       flex-wrap: wrap;
     }
 
+    .selected-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .mobile-priority-actions button:first-child {
+      grid-column: 1 / -1;
+    }
+
+    .inline-form {
+      grid-template-columns: 1fr auto;
+      align-items: stretch;
+    }
+
     .bottom-toolbar button {
-      font-size: 0.8rem;
+      font-size: 0.78rem;
       padding: 8px 6px;
     }
 
