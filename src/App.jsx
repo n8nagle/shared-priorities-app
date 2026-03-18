@@ -24,6 +24,34 @@ const QUADRANT_FILTERS = [
   { value: "Unrated", label: "Unrated" },
 ];
 
+const TUTORIAL_STEPS = [
+  {
+    title: "Start on Main",
+    body:
+      "Use the Main tab to work through your board. Pick an item, view where it lands on the grid, and rate it there.",
+  },
+  {
+    title: "Rate unrated items first",
+    body:
+      "The Unrated Items list is your queue. Items stay there until you deliberately choose both Impact and Effort.",
+  },
+  {
+    title: "Use Next when you are done",
+    body:
+      "After you set both ratings and feel good about them, click Next Unrated Item to move on. This keeps items from disappearing while you are still thinking.",
+  },
+  {
+    title: "Top Priorities shows the output",
+    body:
+      "When you want the ranked list, go to Top Priorities. That tab is for deciding what rises to the top after things are rated.",
+  },
+  {
+    title: "Needs Discussion shows real conflicts",
+    body:
+      "Needs Discussion is only for items where both people fully rated the item and still landed in meaningful disagreement.",
+  },
+];
+
 export default function App() {
   const [loading, setLoading] = useState(true);
 
@@ -88,6 +116,9 @@ export default function App() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingItemId, setDeletingItemId] = useState(null);
 
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [tutorialStep, setTutorialStep] = useState(0);
+
   useEffect(() => {
     let mounted = true;
 
@@ -142,6 +173,19 @@ export default function App() {
 
     loadBoardItems(selectedBoardId);
   }, [selectedBoardId]);
+
+  useEffect(() => {
+    if (!user || !household) return;
+
+    const key = `shared-priorities-tutorial-seen-${user.id}`;
+    const hasSeen = window.localStorage.getItem(key);
+
+    if (!hasSeen) {
+      setShowTutorial(true);
+      setTutorialStep(0);
+      window.localStorage.setItem(key, "true");
+    }
+  }, [user, household]);
 
   async function loadAppState() {
     setLoading(true);
@@ -741,6 +785,27 @@ export default function App() {
     }
   }
 
+  function openTutorial() {
+    setTutorialStep(0);
+    setShowTutorial(true);
+  }
+
+  function closeTutorial() {
+    setShowTutorial(false);
+  }
+
+  function nextTutorialStep() {
+    if (tutorialStep >= TUTORIAL_STEPS.length - 1) {
+      setShowTutorial(false);
+      return;
+    }
+    setTutorialStep((prev) => prev + 1);
+  }
+
+  function prevTutorialStep() {
+    setTutorialStep((prev) => Math.max(0, prev - 1));
+  }
+
   const selectedBoard = useMemo(() => {
     return boards.find((board) => board.id === selectedBoardId) ?? null;
   }, [boards, selectedBoardId]);
@@ -1300,6 +1365,9 @@ export default function App() {
                 </div>
 
                 <div className="header-actions">
+                  <button type="button" onClick={openTutorial}>
+                    How it works
+                  </button>
                   <button type="button" onClick={() => setAppTab(APP_TABS.BOARDS)}>
                     Boards
                   </button>
@@ -1584,6 +1652,19 @@ export default function App() {
       </div>
 
       <BottomToolbar tab={appTab} onChange={setAppTab} discussionCount={discussionCount} />
+
+      {showTutorial ? (
+        <TutorialModal
+          step={tutorialStep}
+          totalSteps={TUTORIAL_STEPS.length}
+          title={TUTORIAL_STEPS[tutorialStep].title}
+          body={TUTORIAL_STEPS[tutorialStep].body}
+          onClose={closeTutorial}
+          onNext={nextTutorialStep}
+          onPrev={prevTutorialStep}
+        />
+      ) : null}
+
       <style>{styles}</style>
     </>
   );
@@ -1643,6 +1724,59 @@ function BottomToolbar({ tab, onChange, discussionCount }) {
       >
         Boards
       </button>
+    </div>
+  );
+}
+
+function TutorialModal({
+  step,
+  totalSteps,
+  title,
+  body,
+  onClose,
+  onNext,
+  onPrev,
+}) {
+  const isLast = step === totalSteps - 1;
+
+  return (
+    <div className="tutorial-overlay" onClick={onClose}>
+      <div className="tutorial-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="tutorial-top">
+          <div className="tutorial-step">
+            Step {step + 1} of {totalSteps}
+          </div>
+          <button type="button" className="tutorial-close" onClick={onClose}>
+            ✕
+          </button>
+        </div>
+
+        <h2>{title}</h2>
+        <p className="tutorial-body">{body}</p>
+
+        <div className="tutorial-dots">
+          {Array.from({ length: totalSteps }).map((_, index) => (
+            <span
+              key={index}
+              className={`tutorial-dot ${index === step ? "active" : ""}`}
+            />
+          ))}
+        </div>
+
+        <div className="tutorial-actions">
+          <button type="button" onClick={onClose}>
+            Skip
+          </button>
+          <div className="tutorial-actions-right">
+            <button type="button" onClick={onPrev} disabled={step === 0}>
+              Back
+            </button>
+            <button type="button" className="primary" onClick={onNext}>
+              {isLast ? "Done" : "Next"}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1985,6 +2119,7 @@ const styles = `
   .header-actions {
     display: flex;
     gap: 8px;
+    flex-wrap: wrap;
   }
 
   .filters-row {
@@ -2422,6 +2557,82 @@ const styles = `
     box-shadow: 0 0 0 2px rgba(10, 19, 31, 0.96);
   }
 
+  .tutorial-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: rgba(0,0,0,0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  .tutorial-modal {
+    width: min(560px, 100%);
+    background: #11243b;
+    border: 1px solid #335070;
+    border-radius: 22px;
+    padding: 20px;
+    box-shadow: 0 18px 48px rgba(0,0,0,0.35);
+    display: grid;
+    gap: 16px;
+  }
+
+  .tutorial-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .tutorial-step {
+    color: #9cb1ca;
+    font-size: 0.9rem;
+    font-weight: 700;
+  }
+
+  .tutorial-close {
+    min-width: 40px;
+    min-height: 40px;
+    padding: 0;
+  }
+
+  .tutorial-body {
+    color: #d9e4f2;
+    line-height: 1.5;
+    margin-bottom: 0;
+  }
+
+  .tutorial-dots {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+  }
+
+  .tutorial-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: #335070;
+  }
+
+  .tutorial-dot.active {
+    background: #f0a329;
+  }
+
+  .tutorial-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .tutorial-actions-right {
+    display: flex;
+    gap: 8px;
+  }
+
   .error {
     background: rgba(255, 95, 95, 0.16);
     color: #ffd4d4;
@@ -2444,7 +2655,8 @@ const styles = `
     .inline-form,
     .header-actions,
     .detail-row,
-    .filters-row {
+    .filters-row,
+    .tutorial-actions {
       display: grid;
     }
 
@@ -2463,7 +2675,8 @@ const styles = `
 
     .detail-actions,
     .selected-actions,
-    .edit-inline-actions {
+    .edit-inline-actions,
+    .tutorial-actions-right {
       flex-direction: row;
       flex-wrap: wrap;
     }
