@@ -83,6 +83,11 @@ export default function App() {
   const [discussionSearch, setDiscussionSearch] = useState("");
   const [topQuadrantFilter, setTopQuadrantFilter] = useState("all");
 
+  const [editingItemId, setEditingItemId] = useState(null);
+  const [editingTitle, setEditingTitle] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [deletingItemId, setDeletingItemId] = useState(null);
+
   useEffect(() => {
     let mounted = true;
 
@@ -289,6 +294,15 @@ export default function App() {
     const partnerRatings = ratings.filter((rating) => rating.user_id !== user.id);
     const partnerRating = partnerRatings[0] ?? null;
 
+    const currentQuadrant = getQuadrantLabel(
+      currentUserRating?.impact ?? null,
+      currentUserRating?.effort ?? null
+    );
+    const partnerQuadrant = getQuadrantLabel(
+      partnerRating?.impact ?? null,
+      partnerRating?.effort ?? null
+    );
+
     const impactDiff =
       currentUserRating &&
       partnerRating &&
@@ -317,7 +331,9 @@ export default function App() {
     const alignmentLabel = getAlignmentLabel(
       currentUserRating,
       partnerRating,
-      disagreementScore
+      disagreementScore,
+      currentQuadrant,
+      partnerQuadrant
     );
 
     return {
@@ -330,6 +346,8 @@ export default function App() {
       impactDiff,
       effortDiff,
       disagreementScore,
+      currentQuadrant,
+      partnerQuadrant,
       alignmentLabel,
       quadrantLabel: getQuadrantLabel(avgImpact, avgEffort),
       needsDiscussion:
@@ -600,6 +618,79 @@ export default function App() {
 
     if (next) {
       setSelectedItemId(next.id);
+    }
+  }
+
+  function startEditingItem(item) {
+    setEditingItemId(item.id);
+    setEditingTitle(item.title);
+    setItemError("");
+    setItemMessage("");
+  }
+
+  function cancelEditingItem() {
+    setEditingItemId(null);
+    setEditingTitle("");
+  }
+
+  async function saveEditedItem() {
+    if (!editingItemId) return;
+
+    const title = editingTitle.trim();
+    if (!title) {
+      setItemError("Item title cannot be empty.");
+      return;
+    }
+
+    setSavingEdit(true);
+    setItemError("");
+    setItemMessage("");
+
+    try {
+      const { error } = await supabase
+        .from("items")
+        .update({ title })
+        .eq("id", editingItemId);
+
+      if (error) throw error;
+
+      setItemMessage("Item updated.");
+      setEditingItemId(null);
+      setEditingTitle("");
+      await loadBoardItems(selectedBoardId);
+    } catch (error) {
+      console.error(error);
+      setItemError(error.message || "Failed to update item.");
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  async function deleteItem(item) {
+    const confirmed = window.confirm(`Delete "${item.title}"? This cannot be undone.`);
+    if (!confirmed) return;
+
+    setDeletingItemId(item.id);
+    setItemError("");
+    setItemMessage("");
+
+    try {
+      const { error } = await supabase.from("items").delete().eq("id", item.id);
+
+      if (error) throw error;
+
+      setItemMessage("Item deleted.");
+      if (editingItemId === item.id) {
+        setEditingItemId(null);
+        setEditingTitle("");
+      }
+
+      await loadBoardItems(selectedBoardId);
+    } catch (error) {
+      console.error(error);
+      setItemError(error.message || "Failed to delete item.");
+    } finally {
+      setDeletingItemId(null);
     }
   }
 
@@ -1140,7 +1231,13 @@ export default function App() {
                       rank={item.isFullyRankedByBoth ? index + 1 : null}
                       onOpen={() => handleJumpToItem(item.id)}
                       onToggleComplete={() => toggleComplete(item)}
+                      onEdit={() => {
+                        handleJumpToItem(item.id);
+                        startEditingItem(item);
+                      }}
+                      onDelete={() => deleteItem(item)}
                       openLabel="Open"
+                      deleting={deletingItemId === item.id}
                     />
                   ))}
                 </div>
@@ -1175,7 +1272,13 @@ export default function App() {
                       item={item}
                       onOpen={() => handleJumpToItem(item.id)}
                       onToggleComplete={() => toggleComplete(item)}
+                      onEdit={() => {
+                        handleJumpToItem(item.id);
+                        startEditingItem(item);
+                      }}
+                      onDelete={() => deleteItem(item)}
                       openLabel="Review"
+                      deleting={deletingItemId === item.id}
                     />
                   ))}
                 </div>
@@ -1268,18 +1371,56 @@ export default function App() {
               ) : (
                 <div className="stack">
                   <div className="selected-header">
-                    <div>
-                      <div className="selected-title">{selectedItem.title}</div>
-                      <div className="muted">
-                        {selectedItem.score === null
-                          ? "Needs rating"
-                          : `Score ${selectedItem.score.toFixed(1)}`}
-                      </div>
+                    <div className="selected-header-main">
+                      {editingItemId === selectedItem.id ? (
+                        <div className="edit-inline">
+                          <input
+                            value={editingTitle}
+                            onChange={(e) => setEditingTitle(e.target.value)}
+                            placeholder="Edit item title"
+                          />
+                          <div className="edit-inline-actions">
+                            <button
+                              type="button"
+                              className="primary"
+                              onClick={saveEditedItem}
+                              disabled={savingEdit}
+                            >
+                              {savingEdit ? "Saving..." : "Save"}
+                            </button>
+                            <button type="button" onClick={cancelEditingItem}>
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="selected-title">{selectedItem.title}</div>
+                          <div className="muted">
+                            {selectedItem.score === null
+                              ? "Needs rating"
+                              : `Score ${selectedItem.score.toFixed(1)}`}
+                          </div>
+                        </>
+                      )}
                     </div>
 
-                    <button type="button" onClick={() => toggleComplete(selectedItem)}>
-                      {selectedItem.is_completed ? "Mark Active" : "Mark Complete"}
-                    </button>
+                    <div className="selected-actions">
+                      <button type="button" onClick={() => startEditingItem(selectedItem)}>
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="danger-btn"
+                        onClick={() => deleteItem(selectedItem)}
+                        disabled={deletingItemId === selectedItem.id}
+                      >
+                        {deletingItemId === selectedItem.id ? "Deleting..." : "Delete"}
+                      </button>
+                      <button type="button" onClick={() => toggleComplete(selectedItem)}>
+                        {selectedItem.is_completed ? "Mark Active" : "Mark Complete"}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="focus-grid">
@@ -1325,12 +1466,14 @@ export default function App() {
 
                   <RatingRow
                     label="Impact"
+                    helpText="importance, urgency, satisfaction"
                     value={selectedItem.currentUserRating?.impact ?? null}
                     onSelect={(value) => saveRating(selectedItem, "impact", value)}
                   />
 
                   <RatingRow
                     label="Effort"
+                    helpText="difficulty, labor, cost"
                     value={selectedItem.currentUserRating?.effort ?? null}
                     onSelect={(value) => saveRating(selectedItem, "effort", value)}
                   />
@@ -1446,10 +1589,12 @@ export default function App() {
   );
 }
 
-function RatingRow({ label, value, onSelect }) {
+function RatingRow({ label, helpText, value, onSelect }) {
   return (
     <div className="rating-row">
-      <div className="field-label">{label}</div>
+      <div className="field-label">
+        {label} <span className="field-help">(ex. {helpText})</span>
+      </div>
       <div className="rating-buttons">
         {[1, 2, 3, 4, 5].map((number) => (
           <button
@@ -1502,7 +1647,16 @@ function BottomToolbar({ tab, onChange, discussionCount }) {
   );
 }
 
-function DetailRow({ item, rank, onOpen, onToggleComplete, openLabel }) {
+function DetailRow({
+  item,
+  rank,
+  onOpen,
+  onToggleComplete,
+  onEdit,
+  onDelete,
+  openLabel,
+  deleting = false,
+}) {
   return (
     <div className="detail-row">
       <div className="detail-row-main">
@@ -1523,6 +1677,12 @@ function DetailRow({ item, rank, onOpen, onToggleComplete, openLabel }) {
       <div className="detail-actions">
         <button type="button" onClick={onOpen}>
           {openLabel}
+        </button>
+        <button type="button" onClick={onEdit}>
+          Edit
+        </button>
+        <button type="button" className="danger-btn" onClick={onDelete} disabled={deleting}>
+          {deleting ? "Deleting..." : "Delete"}
         </button>
         <button type="button" onClick={onToggleComplete}>
           {item.is_completed ? "Mark Active" : "Complete"}
@@ -1598,14 +1758,49 @@ function getQuadrantLabel(avgImpact, avgEffort) {
   return "Save for Later";
 }
 
-function getAlignmentLabel(currentUserRating, partnerRating, disagreementScore) {
+function getAlignmentLabel(
+  currentUserRating,
+  partnerRating,
+  disagreementScore,
+  currentQuadrant,
+  partnerQuadrant
+) {
   if (!hasCompleteUserRating(currentUserRating) || !hasCompleteUserRating(partnerRating)) {
     return "Waiting on ratings";
   }
+
   if (disagreementScore === null) return "Waiting on ratings";
-  if (disagreementScore <= 1) return "Low disagreement";
-  if (disagreementScore <= 3) return "Mid disagreement";
+
+  if (currentQuadrant === partnerQuadrant) {
+    return disagreementScore >= 5 ? "Mid disagreement" : "Low disagreement";
+  }
+
+  const quadrantDistance = getQuadrantDistance(currentQuadrant, partnerQuadrant);
+
+  if (quadrantDistance >= 2) return "High disagreement";
+  if (quadrantDistance === 1) {
+    return disagreementScore >= 5 ? "High disagreement" : "Mid disagreement";
+  }
+
+  if (disagreementScore <= 2) return "Low disagreement";
+  if (disagreementScore <= 4) return "Mid disagreement";
   return "High disagreement";
+}
+
+function getQuadrantDistance(a, b) {
+  const positions = {
+    "Quick Win": [0, 0],
+    "Big Investment": [1, 0],
+    "Low-Stakes": [0, 1],
+    "Save for Later": [1, 1],
+  };
+
+  if (!positions[a] || !positions[b]) return 0;
+
+  const [ax, ay] = positions[a];
+  const [bx, by] = positions[b];
+
+  return Math.abs(ax - bx) + Math.abs(ay - by);
 }
 
 function humanizeBoardType(type) {
@@ -1719,6 +1914,12 @@ const styles = `
     margin-bottom: 8px;
   }
 
+  .field-help {
+    font-weight: 500;
+    color: #9cb1ca;
+    font-size: 0.9rem;
+  }
+
   input,
   select {
     width: 100%;
@@ -1743,6 +1944,12 @@ const styles = `
     color: #102235;
     border: none;
     font-weight: 700;
+  }
+
+  .danger-btn {
+    background: rgba(229, 57, 53, 0.14);
+    border-color: rgba(229, 57, 53, 0.35);
+    color: #ffd6d4;
   }
 
   button:disabled {
@@ -1854,9 +2061,32 @@ const styles = `
     gap: 12px;
   }
 
+  .selected-header-main {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .selected-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
   .selected-title {
     font-size: 1.2rem;
     font-weight: 800;
+  }
+
+  .edit-inline {
+    display: grid;
+    gap: 10px;
+  }
+
+  .edit-inline-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
   }
 
   .focus-grid {
@@ -2231,7 +2461,9 @@ const styles = `
       grid-template-columns: 1fr;
     }
 
-    .detail-actions {
+    .detail-actions,
+    .selected-actions,
+    .edit-inline-actions {
       flex-direction: row;
       flex-wrap: wrap;
     }
