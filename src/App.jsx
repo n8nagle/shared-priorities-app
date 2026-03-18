@@ -26,12 +26,17 @@ const QUADRANT_FILTERS = [
 
 const TUTORIAL_STEPS = [
   {
-    title: "Start on Main",
+    title: "Start by adding items",
     body:
-      "Use the Main tab to work through your board. Pick an item, view where it lands on the grid, and rate it there.",
+      "A board is just a container until you add items to compare. Start on the Main tab and use Add Item to enter projects, purchases, meals, or whatever belongs on this board.",
   },
   {
-    title: "Rate unrated items first",
+    title: "Then rate items on Main",
+    body:
+      "After items exist, use the Main tab to select one, view where it lands on the grid, and rate it there.",
+  },
+  {
+    title: "Work through unrated items first",
     body:
       "The Unrated Items list is your queue. Items stay there until you deliberately choose both Impact and Effort.",
   },
